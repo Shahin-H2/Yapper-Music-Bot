@@ -1,9 +1,6 @@
 /**
- * Music Bot's entry point: `npm start` runs `node --env-file=.env bot.js`.
- *
- * Reads the settings (src/config.js), starts the yapper.js bot with every cog in ./cogs and, on Ctrl+C or SIGTERM,
- * shuts down cleanly: event polling stops first, then each cog unloads (the music cog leaves every voice channel),
- * then LiveKit closes. A second signal, or a shutdown that takes longer than 8 s, ends the process right away.
+ * Entry point (`npm start` runs `node --env-file=.env bot.js`): loads the settings and the cogs in ./cogs, then runs
+ * the bot until SIGINT or SIGTERM. A second signal, or a shutdown that takes over 8 s, exits at once.
  */
 import { fileURLToPath } from 'node:url';
 import { Bot } from './yapper.js';
@@ -15,17 +12,17 @@ const COGS_DIR = fileURLToPath(new URL('./cogs/', import.meta.url));
 const log = createLogger('bot');
 let stopping = false;
 
-// Last-resort nets: a stray rejection is logged and the bot carries on; after an exception its state is unknown.
+// Last resort: a stray rejection is logged and the bot carries on; after an uncaught exception its state is unknown.
 process.on('unhandledRejection', (reason) => log.error('unhandled promise rejection:', reason));
 process.on('uncaughtException', (err) => {
   log.error('uncaught exception, exiting:', err?.stack ?? err);
   process.exit(1);
 });
 
-/** Where an error from yapper.js came from: '[music /play]' for one a cog threw, else 'yapper:'. */
+/** '[music /play]' for an error a cog threw, else 'yapper:'. */
 const origin = (err) => (err?.cog ? `[${err.cog}${err.where ? ` ${err.where}` : ''}]` : 'yapper:');
 
-/** Stops polling, unloads every cog (players leave voice), closes LiveKit, exits with `code`. Runs once. */
+/** Runs once: stops polling, unloads the cogs (players leave voice), closes LiveKit, exits with `code`. */
 async function shutdown(bot, why, code = 0) {
   if (stopping) return;
   stopping = true;
@@ -35,7 +32,7 @@ async function shutdown(bot, why, code = 0) {
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   watchdog.unref();
-  // First: unloading cogs while the bot still runs would send Yapin’ a shrinking command list.
+  // Before unloading: while the bot runs, each unload sends Yapin’ the shrinking command list.
   bot.stop();
   for (const name of [...bot.cogs.keys()].reverse()) {
     try {
@@ -69,7 +66,7 @@ async function main() {
   if (!config.token) {
     log.error("YAPPER_BOT_TOKEN isn't set. Copy .env.example to .env, put your bot token in it (Yapin’ → "
       + 'Settings → Developer → Create) and start the bot with `npm start`.');
-    process.exitCode = 1; // exit by running out of work, so the message isn't cut off
+    process.exitCode = 1; // not process.exit(), which can cut the message off
     return;
   }
   let bot;
