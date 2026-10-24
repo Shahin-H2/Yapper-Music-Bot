@@ -1,5 +1,5 @@
 /**
- * What DLS_bot shows in chat: the Now Playing card and its buttons, the queue, the library and help, plus the
+ * What Music Bot shows in chat: the Now Playing card and its buttons, the queue, the library and help, plus the
  * custom ids the buttons carry. Pure: builders take plain data (a PlayerSnapshot, Tracks) and return yapper.js
  * Embed and Row objects; nothing here does I/O or keeps state.
  *
