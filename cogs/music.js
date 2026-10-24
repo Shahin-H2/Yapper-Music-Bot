@@ -1,5 +1,5 @@
 /**
- * DLS_bot's Music cog: every command, button and voice event, as thin glue. A handler parses what was typed, checks
+ * Music Bot's Music cog: every command, button and voice event, as thin glue. A handler parses what was typed, checks
  * it, hands the work to src/ (TrackLibrary finds tracks, one Player per server plays them, VoiceDirectory knows who
  * is in which voice channel) and answers with a card from src/ui.js.
  *
