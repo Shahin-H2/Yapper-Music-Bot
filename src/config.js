@@ -1,5 +1,5 @@
 /**
- * DLS_bot's settings, read from environment variables (`npm start` loads them from .env; see .env.example).
+ * Music Bot's settings, read from environment variables (`npm start` loads them from .env; see .env.example).
  *
  *   const config = loadConfig();          // or loadConfig({ DEFAULT_VOLUME: '80' }) in tests
  *   for (const w of config.warnings) log.warn(w);
