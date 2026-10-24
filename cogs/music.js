@@ -1,8 +1,7 @@
 /**
- * The music cog: commands, buttons and voice events as thin glue over src/ (tracks, players, voice, cards).
- * yapper.js handles one event at a time and awaits each handler, and a click must be answered within 3 s, so
- * handlers keep their waits short and bounded and never await their own replies (see #command). Joining voice and
- * playback run detached; what happens there is posted from each Player's events, in order.
+ * The music cog: commands, buttons and voice events as thin glue over src/. yapper.js awaits each handler before
+ * the next event, and a click must be answered within 3 s, so handlers keep their waits short and bounded and never
+ * await their own replies (see #command). Joining voice and playback run detached and report through Player events.
  */
 import path from 'node:path';
 import * as rtc from '@livekit/rtc-node';
@@ -22,25 +21,19 @@ import { VoiceDirectory, connectVoice } from '../src/voice.js';
 
 /** @typedef {import('../src/tracks.js').Track} Track */
 /**
- * @typedef {object} Session the chat side of one Player
- * @property {Player} player
- * @property {{ channelId: string, messageId: string, track: Track }|null} card the Now Playing card with live buttons
- * @property {Promise<void>} chain chat work in order, so a card never overtakes the notice before it
- * @property {number} version bumped by every change the card shows (pause, volume, loop, queue)
- * @property {number} shown the version the card shows
- * @property {any} refresh pending card-refresh timer, or null
- * @property {number|null} joinedAt when the current voice connection came up (#now)
- * @property {boolean} reported a failed join was already posted
- * @property {any} joinNotice pending "still joining" timer, or null
- * @property {boolean} failedLast the last track failed, so the queue end can't say "that was the last track"
+ * The chat side of one Player. `card` is the live Now Playing card (the only one with buttons), `chain` keeps chat
+ * work in order so a card never overtakes the notice before it, and `shown` is the `version` the card shows.
+ * @typedef {{ player: Player, card: { channelId: string, messageId: string, track: Track }|null,
+ *   chain: Promise<void>, version: number, shown: number, refresh: any, joinedAt: number|null, reported: boolean,
+ *   joinNotice: any, failedLast: boolean }} Session
  */
 
 const LOOKUP_MS = 3000;         // backstop: VoiceDirectory gives up after 2.5 s itself
 const BUTTON_LOOKUP_MS = 1500;  // shorter: a click must be answered within 3 s
 const PROBE_MS = 2000;          // ffprobe for length and tags; a slower file plays without them this time
-const NAME_TTL_MS = 10 * 60_000; // voice channel names, for messages and the card footer
+const NAME_TTL_MS = 10 * 60_000;
 const NO_NAME_TTL_MS = 30_000;
-const REFRESH_MS = 1500;        // Now Playing card edits are batched this long
+const REFRESH_MS = 1500;        // card edits are debounced: changes come in bursts
 const JOIN_GRACE_MS = 5000;     // our own voice_leave this soon after joining is stale (a /stop, then a /play)
 const JOIN_NOTICE_MS = 2500;
 // Yapin’ allows a bot 10 voice joins and leaves a minute across all servers. Each server, and each person, may make
@@ -48,8 +41,8 @@ const JOIN_NOTICE_MS = 2500;
 const JOIN_GAP_MS = 20_000;
 const FFMPEG_RECHECK_MS = 30_000;
 const LEAVE_STEP_MS = 3000;     // per step of leaving voice; a shutdown must fit bot.js's 8 s watchdog
-const UNLOAD_MS = 4000;         // cogUnload: for the players to leave voice
-const FLUSH_MS = 1500;          // cogUnload: then for their last chat updates
+const UNLOAD_MS = 4000;
+const FLUSH_MS = 1500;
 
 const DM_TEXT = '🚫 This only works in a server.';
 const IDLE_TEXT = '💤 Nothing is playing right now. Start something with `/play`.';
@@ -70,7 +63,6 @@ const sameId = (a, b) => isId(a) && isId(b) && String(a) === String(b);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const mentionOf = (userId) => (isId(userId) ? `<@${userId}>` : 'someone');
 const timeoutError = (ms) => Object.assign(new Error(`no answer within ${ms} ms`), { name: 'TimeoutError' });
-// Not clamped here: ui.js knows how many pages there are.
 const pageOf = (text) => (/^\d{1,6}$/.test(String(text ?? '')) ? Number(text) : 1);
 // Escaped for chat, minus the final period: callers put it inside their own sentence.
 const reasonOf = (err) => sanitize(err?.message || String(err || 'something went wrong'), 200).replace(/[.!]+$/, '');
