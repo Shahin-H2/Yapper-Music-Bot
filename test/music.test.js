@@ -169,7 +169,7 @@ async function setup({ files = ['Alpha.mp3', 'Beta.mp3', 'Gamma.mp3'], config = 
 
 let seq = 0;
 
-/** `/name args` from `user`, through the SDK's dispatch; resolves when the handler is done. → the message data */
+/** `/name args` from `user`, through the SDK's dispatch; resolves with the message data once the handler is done. */
 async function command(ctx, name, args = '', { user = USER, server = SERVER, channel = TEXT } = {}) {
   seq++;
   const data = { id: `msg-${seq}`, channel_id: channel, author_id: user, content: `/${name}${args ? ` ${args}` : ''}`,
@@ -179,7 +179,7 @@ async function command(ctx, name, args = '', { user = USER, server = SERVER, cha
   return data;
 }
 
-/** A click on a control button of message `messageId`. → the interaction answer the cog sent */
+/** A click on a control button of message `messageId`; returns the interaction answer the cog sent. */
 async function click(ctx, action, { messageId, user = USER, server = SERVER, customId } = {}) {
   seq++;
   const data = { id: `int-${seq}`, token: `tok-${seq}`, custom_id: customId ?? `music:${action}:${server}`,
@@ -507,7 +507,7 @@ describe('Music cog: /play', OPTS, () => {
     assert.equal(ctx.api.posts.filter((p) => p.content.startsWith('🔌')).length, 1, 'said once');
   });
 
-  it("keeps ffmpeg's path out of chat when ffmpeg goes missing after the startup check, then refuses /play",
+  it("keeps ffmpeg's path out of chat when ffmpeg goes missing after startup, then refuses /play",
     async () => {
       const bin = '/Users/someone/bin/ffmpeg';
       const decoders = new FakeDecoders((dec) => dec.failToStart(`ffmpeg not found at "${bin}" — install ffmpeg or set `
@@ -963,7 +963,7 @@ describe('Music cog: control commands', OPTS, () => {
   });
 });
 
-describe("Music cog: Yapin’'s rate limits", OPTS, () => {
+describe('Music cog: Yapin’ rate limits', OPTS, () => {
   it("doesn't wait for its own replies: one stuck on a rate limit can't hold up the next event", async () => {
     const ctx = await setup();
     const { card } = await startPlaying(ctx, '1');
@@ -977,7 +977,7 @@ describe("Music cog: Yapin’'s rate limits", OPTS, () => {
     assert.equal((await click(ctx, 'toggle', { messageId: card.id })).embeds[0].title, '⏸ Paused');
   });
 
-  it("someone who isn't in voice can't burn the bot's voice lookups by spamming /play or the buttons", async () => {
+  it("someone outside voice can't burn the bot's voice lookups by spamming /play or the buttons", async () => {
     const ctx = await setup();
     const { card } = await startPlaying(ctx, '1');
     ctx.api.setVoice({ [LOUNGE]: [USER, BOT], [GAMING]: [] }); // user-9 is in no voice channel
@@ -1081,7 +1081,7 @@ describe('Music cog: voice events and unloading', OPTS, () => {
     assert.equal(ctx.voice.last.leaveCalls, 1);
   });
 
-  it('looks who is still there once the bot itself arrives (the requester may have left meanwhile)', async () => {
+  it('checks who is still there once the bot itself arrives (the requester may have left meanwhile)', async () => {
     const ctx = await setup();
     await startPlaying(ctx, '1');
     ctx.api.setVoice({ [LOUNGE]: [BOT] });
