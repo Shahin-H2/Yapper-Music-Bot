@@ -1,19 +1,7 @@
 /**
- * Voice for Music Bot: joining a channel through yapper.js + @livekit/rtc-node, and knowing who is in voice.
- *
- *   import * as rtc from '@livekit/rtc-node';
- *   const conn = await connectVoice({ bot, rtc, serverId, channelId, queueMs: 200 });
- *   conn.on('disconnected', () => player.stop('disconnected'));     // only when it wasn't our own leave()
- *   await conn.source.captureFrame(conn.createFrame(pcm));          // 10 ms of 48 kHz stereo s16
- *   await conn.leave();                                             // idempotent, bounded, never rejects
- *
- *   const dir = new VoiceDirectory(bot);
- *   await dir.channelOf(serverId, userId);                          // voice channel id or null (cached briefly)
- *
- * bot.connectVoice does no cleanup when it fails half-way (the room can stay connected), and its AudioSource has a
- * 1 s native queue (pause and volume would lag by a second). connectVoice fixes both by handing the SDK a copy of the
- * rtc module whose classes force a short queue and remember what they built. Its `signal` lets the caller give up on
- * a join: what arrives later is torn down without touching a newer session of the server.
+ * Voice for Music Bot: joining a channel through yapper.js and @livekit/rtc-node, and knowing who is in voice.
+ * connectVoice wraps bot.connectVoice, which leaves a half-failed join connected and gives its AudioSource LiveKit's
+ * default 1000 ms queue (pause and volume would lag by a second).
  */
 import { EventEmitter } from 'node:events';
 import { createLogger } from './log.js';
@@ -29,7 +17,7 @@ const SAMPLES_PER_CHANNEL = 480;
 const FRAME_SAMPLES = SAMPLES_PER_CHANNEL * CHANNELS;
 const LEAVE_TIMEOUT_MS = 5000;
 
-/** Run `work` and wait for it at most `ms`. Never rejects: → { ok, error }. */
+// Runs `work`, waiting at most `ms`. Resolves { ok, error } and never rejects; a timeout doesn't stop `work`.
 function settle(work, ms) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve({ ok: false, error: new Error(`timed out after ${ms} ms`) }), ms);
@@ -52,12 +40,9 @@ function positiveInt(value, name) {
 
 const messageOf = (e) => (e instanceof Error ? e.message : String(e));
 
-/**
- * Finishes LiveKit's clean-up of a room the server dropped. @livekit/rtc-node 1.2.1 takes a room off its global event
- * feed only in disconnect(), which does nothing once the room is disconnected: left alone, every dropped room would
- * stay in memory and run its handler for every FFI event (one per frame sent) for the life of the process.
- * Best effort; a room that is still connected is released when it drops.
- */
+// Finishes LiveKit's cleanup of a room the server dropped: @livekit/rtc-node 1.2.1 takes a room off its global FFI
+// event feed only in disconnect(), a no-op once disconnected, so each dropped room would stay in memory and handle
+// every FFI event (one per frame sent) for the life of the process. A still-connected room is released when it drops.
 function releaseRoom(room) {
   if (typeof room?.removeAllListeners !== 'function') return;
   const release = () => {
@@ -65,17 +50,13 @@ function releaseRoom(room) {
       const feed = globalThis._ffiClientInstance; // rtc-node's FfiClient
       if (typeof room.onFfiEvent === 'function') feed?.off?.('ffi_event', room.onFfiEvent);
       room.removeAllListeners();
-    } catch { /* LiveKit's internals changed: nothing more we can do */ }
+    } catch { /* LiveKit internals changed: best effort only */ }
   };
   if (room.isConnected === false) release();
   else room.once?.('disconnected', release);
 }
 
-/**
- * Short text for a failed voice join, fit to show the person who ran /play.
- * @param {unknown} err usually an Error from bot.api (with `.status`, and `.retryAfter` in seconds on 429)
- * @returns {string}
- */
+/** Text for the person who ran /play when a join fails; reads bot.api's `.status` and `.retryAfter` (seconds). */
 export function voiceErrorMessage(err) {
   const e = /** @type {any} */ (err);
   switch (Number(e?.status)) {
@@ -94,17 +75,15 @@ export function voiceErrorMessage(err) {
 }
 
 /**
- * Join a voice channel with bot.connectVoice and wrap the call in a VoiceConnection.
- * On any failure everything already built is torn down (room, track, Yapin’'s voice state) and an Error is thrown
- * with message voiceErrorMessage(e), `.cause` = the original error and `.status` = its HTTP status (if any).
- * Bad arguments reject with TypeError/RangeError before anything is joined.
- * Once `signal` aborts, the caller has given up on this join (and the server may have a newer session by then): the
- * LiveKit room isn't connected any more, a join that completes or fails anyway is torn down without the server-wide
- * POST /voice/leave (which would take that newer session out of voice), and it rejects with `signal.reason`.
+ * Joins a voice channel through bot.connectVoice. A failed join is torn down (room, track, the bot's voice state on
+ * Yapin’) and rethrown as Error(voiceErrorMessage(e), { cause: e }) with e's `.status` and `.retryAfter`.
+ * Aborting `signal` means the caller gave up and the server may already have a newer session: an unconnected room
+ * never connects, and a join that lands or fails later is torn down without POST /voice/leave, which would take that
+ * newer session out of voice. The promise then rejects with `signal.reason`.
  * @param {{ bot: any, rtc: any, serverId: string, channelId: string, queueMs?: number, bitrate?: number,
  *   logger?: Logger, leaveTimeoutMs?: number, signal?: AbortSignal|null }} opts
- *   rtc: the @livekit/rtc-node module (`import * as rtc`); queueMs: native audio queue length, a multiple of 10;
- *   leaveTimeoutMs: how long each cleanup step may take, here and in VoiceConnection#leave.
+ *   rtc: the @livekit/rtc-node module; queueMs: native audio queue length, a multiple of 10; leaveTimeoutMs: bound
+ *   on each cleanup step, here and in VoiceConnection#leave
  * @returns {Promise<VoiceConnection>}
  */
 export async function connectVoice({
@@ -152,7 +131,7 @@ export async function connectVoice({
   try {
     call = await bot.connectVoice(mod, serverId, channelId, { sampleRate: SAMPLE_RATE, channels: CHANNELS, bitrate });
     if (!call?.source) throw new Error('Joined voice but got no audio source back');
-    if (cancelled()) throw cancel(); // it got through after all, but nobody wants it any more
+    if (cancelled()) throw cancel(); // joined after all, but the caller has given up
     const conn = new VoiceConnection({ bot, rtc, call, serverId, channelId, logger: log, leaveTimeoutMs });
     log.debug(`joined voice channel ${channelId} in ${serverId}${conn.e2ee ? ' (end-to-end encrypted)' : ''}`);
     return conn;
@@ -173,7 +152,7 @@ export async function connectVoice({
     if (left && !left.ok) {
       log.debug(`leaveVoice(${serverId}) after the failed join didn't work: ${messageOf(left.error)}`);
     }
-    if (cancelled()) throw cancel(); // the caller gave up on it: how it ended is beside the point now
+    if (cancelled()) throw cancel(); // the caller gave up, so how the join failed no longer matters
     const err = new Error(voiceErrorMessage(e), { cause: e });
     err.status = e?.status;
     if (e?.retryAfter !== undefined) err.retryAfter = e.retryAfter;
@@ -187,9 +166,9 @@ export async function connectVoice({
  *  - 'participantsChanged' (count|null): someone joined or left the room.
  */
 export class VoiceConnection extends EventEmitter {
-  /** @type {string} */ channelId;
-  /** @type {string} */ serverId;
-  /** @type {boolean} */ e2ee;
+  channelId;
+  serverId;
+  e2ee;
   #bot;
   #rtc;
   #call;
@@ -197,14 +176,13 @@ export class VoiceConnection extends EventEmitter {
   #log;
   #timeoutMs;
   #listeners = [];
-  /** @type {Promise<void>|null} */
   #leaving = null;
   #hangingUp = false;
   #lost = false;
 
   /**
    * @param {{ bot: any, rtc: any, call: VoiceCall, serverId: string, channelId: string, logger?: Logger,
-   *   leaveTimeoutMs?: number }} opts  call: what bot.connectVoice returned; leaveTimeoutMs bounds each leave() step
+   *   leaveTimeoutMs?: number }} opts call: what bot.connectVoice returned; leaveTimeoutMs bounds each leave() step
    */
   constructor({
     bot, rtc, call, serverId, channelId, logger, leaveTimeoutMs = LEAVE_TIMEOUT_MS,
@@ -229,16 +207,14 @@ export class VoiceConnection extends EventEmitter {
     if (this.#room?.isConnected === false) setImmediate(() => this.#dropped(null));
   }
 
-  /** The AudioSource to captureFrame() into. */
   get source() { return this.#call.source; }
 
   /** True once leave() was called or the room dropped us. */
   get closed() { return this.#lost || this.#hangingUp; }
 
   /**
-   * 10 ms of interleaved 48 kHz stereo s16 (960 samples) as an rtc.AudioFrame.
-   * Native code reads the frame's whole ArrayBuffer from offset 0, so a view into a bigger buffer is copied first.
-   * @param {Int16Array} pcm
+   * 10 ms of interleaved 48 kHz stereo s16 (960 samples) as an rtc.AudioFrame. LiveKit reads the frame's whole
+   * ArrayBuffer from offset 0, so a view into a bigger buffer is copied first.
    */
   createFrame(pcm) {
     if (!(pcm instanceof Int16Array)) throw new TypeError('createFrame needs an Int16Array');
@@ -255,10 +231,8 @@ export class VoiceConnection extends EventEmitter {
   }
 
   /**
-   * Hang up: stop listening to the room, call.leave() (bounded), close the track (which closes the source), and
-   * if call.leave() failed or timed out, ask Yapin’ to take the bot out of voice.
-   * Returns the same promise every time, and it never rejects.
-   * @returns {Promise<void>}
+   * Hangs up: call.leave() (bounded), close the track, and if call.leave() failed or timed out, ask Yapin’ to take
+   * the bot out of voice. Returns the same promise on every call; it never rejects.
    */
   leave() {
     if (!this.#leaving) {
@@ -320,7 +294,6 @@ export class VoiceConnection extends EventEmitter {
   }
 }
 
-/** A server id as the caches key it; a missing one is a TypeError. */
 function keyOf(serverId) {
   if (serverId === undefined || serverId === null || serverId === '') throw new TypeError('A server id is needed');
   return String(serverId);
@@ -336,18 +309,16 @@ export class VoiceDirectory {
   #absentMs;
   #timeoutMs;
   #now;
-  /** @type {Map<string, { at: number, channels: readonly VoiceChannelState[] }>} */
   #cache = new Map();
-  /** @type {Map<string, { promise: Promise<readonly VoiceChannelState[]> }>} */
   #inflight = new Map();
-  /** @type {Map<string, Map<string, number>>} per server: who a fresh lookup found outside voice, and when */
+  // server -> (user id -> when a fresh lookup found them outside voice), oldest first
   #absent = new Map();
 
   /**
    * @param {any} bot the yapper.js bot (only bot.api is used)
    * @param {{ ttlMs?: number, absentMs?: number, timeoutMs?: number, now?: () => number }} [opts]
    *   ttlMs: how long an answer is reused (0 = never); absentMs: how long channelOf remembers someone it found
-   *   outside voice (0 = never); timeoutMs: per request; now: the clock (tests pin it)
+   *   outside voice (0 = never); timeoutMs: per request
    */
   constructor(bot, { ttlMs = 5000, absentMs = 15000, timeoutMs = 2500, now = Date.now } = {}) {
     if (typeof bot?.api !== 'function') throw new TypeError('VoiceDirectory needs the yapper.js bot');
@@ -364,9 +335,7 @@ export class VoiceDirectory {
   }
 
   /**
-   * Every voice channel of the server with who's in it: [{ channel_id, user_ids }] (a copy).
-   * Rejects with the API's error (it has `.status`).
-   * @param {string} serverId
+   * A copy of every voice channel of the server and who is in it. Rejects with the API's error (with `.status`).
    * @param {{ fresh?: boolean }} [opts] fresh: skip the cache (a request already on its way is still shared)
    * @returns {Promise<VoiceChannelState[]>}
    */
@@ -376,15 +345,11 @@ export class VoiceDirectory {
   }
 
   /**
-   * The voice channel `userId` is in, or null. A "not in voice" that came from the cache is checked once more with
-   * a fresh lookup first (they may have joined since). Someone a fresh lookup found outside voice is then answered
-   * from memory for absentMs, unless the cache shows them in a channel by now or a voice event in the server
-   * (invalidate) came in: repeating /play or clicking a button doesn't cost a lookup every time, so nobody can spend
-   * the bot's 60 lookups a minute (every server's) on their own.
-   * @param {string} serverId
-   * @param {string} userId
-   * @param {{ fresh?: boolean }} [opts] fresh: skip the cache and the memory
-   * @returns {Promise<string|null>}
+   * The voice channel `userId` is in, or null. A cached "not in voice" is checked once more with a fresh lookup
+   * (they may have joined since). A fresh "not in voice" is then reused for absentMs unless the cache shows them in a
+   * channel or invalidate() runs, so repeating /play or clicking a button can't spend the bot's 60 lookups a minute,
+   * which every server shares.
+   * @param {{ fresh?: boolean }} [opts] fresh: skip the cache and that memory
    */
   async channelOf(serverId, userId, { fresh = false } = {}) {
     if (userId === undefined || userId === null || userId === '') return null;
@@ -404,11 +369,8 @@ export class VoiceDirectory {
   }
 
   /**
-   * Who is in that channel right now (always a fresh lookup), minus `excludeIds` (e.g. the bot itself).
-   * @param {string} serverId
-   * @param {string} channelId
+   * Who is in that channel now (always a fresh lookup), minus `excludeIds` (such as the bot) and duplicates.
    * @param {Iterable<string>|string} [excludeIds]
-   * @returns {Promise<string[]>}
    */
   async othersIn(serverId, channelId, excludeIds = []) {
     const { channels } = await this.#get(keyOf(serverId), true);
@@ -423,9 +385,8 @@ export class VoiceDirectory {
   }
 
   /**
-   * Forget what we know about a server (call on voice_join / voice_leave). A lookup already on its way is
-   * neither cached nor shared afterwards. Without a server id (voice events may lack one): forget every server.
-   * @param {string} [serverId]
+   * Forgets a server's voice state (call on voice_join and voice_leave); a lookup already on its way is neither cached
+   * nor shared afterwards. Without a server id, which voice events may lack, forgets every server.
    */
   invalidate(serverId) {
     if (serverId === undefined || serverId === null || serverId === '') {
@@ -439,14 +400,14 @@ export class VoiceDirectory {
     this.#absent.delete(String(serverId));
   }
 
-  /** The server's cached channels while they are fresh, else null. */
+  // The server's cached channels while they are fresh, else null.
   #cached(key) {
     const hit = this.#cache.get(key);
     const age = hit ? this.#now() - hit.at : NaN;
     return age >= 0 && age < this.#ttlMs ? hit.channels : null;
   }
 
-  /** Notes that `userId` was just found outside voice; notes too old to matter go (the map is oldest first). */
+  // Notes `userId` as outside voice now; re-insertion keeps the map oldest first, so pruning can stop early.
   #remember(absent, userId) {
     const now = this.#now();
     absent.delete(userId);
