@@ -35,7 +35,7 @@ const stationTrack = (extra = {}) => ({
   input: 'https://ice2.somafm.com/groovesalad-128-mp3', source: 'station', duration: null, stationId: 'groovesalad',
   description: 'Ambient beats and grooves', url: 'https://somafm.com/groovesalad/', requestedBy: 'u2', ...extra,
 });
-/** A track with every text field as long and nasty as it gets, and the longest requester id that still counts. */
+/** Every text field at its longest and most hostile (HUGE), plus the longest requester id that still counts. */
 const hostileTrack = (extra = {}) => fileTrack(HUGE, {
   artist: HUGE, description: HUGE, fileName: HUGE, requestedBy: 'x'.repeat(64), duration: 1e9,
   url: `https://evil.example/${'a'.repeat(3000)}`, ...extra,
@@ -181,7 +181,7 @@ describe('formatDuration', () => {
 });
 
 describe('progressBar', () => {
-  it('draws the knob where the position is (the README example)', () => {
+  it('draws the knob where the position is', () => {
     assert.equal(progressBar(30, 100), '▬▬▬▬🔘▬▬▬▬▬▬▬▬▬');
     assert.equal(progressBar(0, 100), `🔘${'▬'.repeat(13)}`);
     assert.equal(progressBar(100, 100), `${'▬'.repeat(13)}🔘`);
@@ -193,7 +193,7 @@ describe('progressBar', () => {
     for (const p of [-5, NaN, null, undefined, '50', Infinity]) assert.equal(progressBar(p, 100), progressBar(0, 100));
   });
 
-  it('is `width` symbols wide (1 to 50; junk gives 14)', () => {
+  it('is `width` symbols wide (clamped to 1..50; a non-number gives 14)', () => {
     for (const w of [1, 2, 5, 14, 50]) assert.equal([...progressBar(10, 100, w)].length, w, `width ${w}`);
     assert.equal([...progressBar(10, 100, 500)].length, 50);
     assert.equal([...progressBar(10, 100, 0)].length, 1);
