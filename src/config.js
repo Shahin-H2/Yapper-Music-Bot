@@ -1,12 +1,7 @@
 /**
- * Music Bot's settings, read from environment variables (`npm start` loads them from .env; see .env.example).
- *
- *   const config = loadConfig();          // or loadConfig({ DEFAULT_VOLUME: '80' }) in tests
- *   for (const w of config.warnings) log.warn(w);
- *
- * loadConfig never throws: a value that can't be used falls back to its default and leaves a line in `warnings`
- * naming the variable and the bad value (the token is never echoed). Relative paths are resolved against the
- * project root, not the folder node was started in, so `npm start` works from anywhere.
+ * Settings from environment variables; `npm start` loads .env, and .env.example documents each variable.
+ * loadConfig never throws: an unusable value falls back to its default and adds a line to `warnings` (the token is
+ * never echoed). Relative paths resolve against the project root, not the working directory.
  */
 import os from 'node:os';
 import path from 'node:path';
@@ -22,7 +17,6 @@ import { LOG_LEVELS, parseLogLevel } from './log.js';
  * }>} Config
  */
 
-/** Absolute path of the project root (the folder that holds src/), wherever node was started from. */
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const BOOLEANS = new Map([
@@ -30,17 +24,16 @@ const BOOLEANS = new Map([
   ...['false', '0', 'no', 'off'].map((k) => [k, false]),
 ]);
 
-/** A bad value as a warning shows it: quoted, cut short, and with anything token-like blanked out. */
+// Quoted and cut short. Anything token-like is masked, in case a token was pasted into the wrong variable.
 const show = (raw) => {
   const safe = raw.replace(/yb_\S*/g, 'yb_…');
   return JSON.stringify(safe.length > 60 ? `${safe.slice(0, 59)}…` : safe);
 };
 
-/** `~` and `~/x` mean the home folder, as they would in a shell. */
+// .env values aren't shell-expanded. Only `~` and `~/x` are handled, not `~user`.
 const expandHome = (p) => (/^~(?=$|[\\/])/.test(p) ? path.join(os.homedir(), p.slice(1)) : p);
 
 /**
- * Build the settings from `env`. Every field has a default; see .env.example for what each variable does.
  * @param {Record<string, unknown>} [env]
  * @returns {Config}
  */
@@ -49,7 +42,7 @@ export function loadConfig(env = process.env) {
   const warnings = [];
   const reject = (name, raw, why, fallback) => { warnings.push(`${name}=${show(raw)} ${why}; using ${fallback}`); };
 
-  /** The trimmed value, minus one pair of surrounding quotes (Docker env files keep them); undefined if unset. */
+  // Trimmed, minus one pair of surrounding quotes (Docker env files keep them); undefined when unset.
   const read = (name) => {
     try {
       const value = source[name];
@@ -82,7 +75,7 @@ export function loadConfig(env = process.env) {
     if (!raw) return fallback;
     if (raw.includes('\0')) { reject(name, raw, 'contains a NUL character', fallback); return fallback; }
     const p = expandHome(raw);
-    // A bare program name ('ffmpeg') is looked up on PATH; anything with a slash is a path from the project root.
+    // A bare program name ('ffmpeg') stays a PATH lookup; anything with a slash resolves from the project root.
     return bareName && !/[\\/]/.test(p) ? p : path.resolve(PROJECT_ROOT, p);
   };
   const color = (name, fallback) => {
@@ -109,7 +102,7 @@ export function loadConfig(env = process.env) {
   };
 
   const token = read('YAPPER_BOT_TOKEN') || null;
-  // Kept as is (the SDK refuses it with its own message), but said here too. Never echo it.
+  // Kept, so the SDK refuses it with its own error; flagged here too, without echoing it.
   if (token && !token.startsWith('yb_')) {
     warnings.push("YAPPER_BOT_TOKEN doesn't start with yb_, so it isn't a bot token "
       + '(make one in Yapin’ → Settings → Developer)');
