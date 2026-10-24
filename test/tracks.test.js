@@ -30,7 +30,7 @@ const NEWLINE = String.fromCodePoint(10);
 const TAB = String.fromCodePoint(9);
 const RLO = String.fromCodePoint(0x202e); // right-to-left override
 
-/** The README's station table: [id, name, url, homepage]. */
+/** The shipped stations in the README's order: [id, name, url, homepage]. */
 const TABLE = [
   ['groovesalad', 'SomaFM · Groove Salad', 'https://ice2.somafm.com/groovesalad-128-mp3',
     'https://somafm.com/groovesalad/'],
@@ -585,7 +585,7 @@ describe('resolveQuery', () => {
       assert.match(refused(resolve('ftp://x', { allowUrls: false }), 'bad_url').message, /turned off/);
     });
 
-    it('explains that YouTube, Spotify and friends are web pages, not audio', () => {
+    it('explains that YouTube, Spotify and other music-service links are web pages, not audio', () => {
       const pages = [['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'YouTube'],
         ['https://youtu.be/dQw4w9WgXcQ', 'YouTube'],
         ['https://music.youtube.com/watch?v=x', 'YouTube'], ['https://open.spotify.com/track/x', 'Spotify'],
