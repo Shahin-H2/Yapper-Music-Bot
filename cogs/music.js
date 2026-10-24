@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * The music cog: commands, buttons and voice events as thin glue over src/. yapper.js awaits each handler before
  * the next event, and a click must be answered within 3 s, so handlers keep their waits short and bounded and never
