@@ -1,16 +1,16 @@
-# Secrets: your bot token lives here. Never commit it (.env.example is the template).
+# Secrets (the bot token). .env.example is the template to commit instead.
 .env
 .env.*
 !.env.example
 
-# Dependencies (reinstall with `npm install`)
+# Dependencies (npm install)
 node_modules/
 
-# OS / editor clutter
+# OS and editor files
 .DS_Store
 Thumbs.db
 *.log
 
-# Your local music (music/*.mp3, .wav, .flac, .ogg, …) stays on your machine; the folder itself is kept.
+# Local audio files stay out of git; the empty music/ folder is kept.
 music/*
 !music/.gitkeep
