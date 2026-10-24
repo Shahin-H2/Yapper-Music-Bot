@@ -134,8 +134,8 @@ export class FakeTimers {
 }
 
 /**
- * Stands in for src/ffmpeg.js's Decoder. The test feeds stdout (a PassThrough) with push(); `done` settles on end(),
- * fail() or the player's kill(), or never, like a stream that keeps going.
+ * A stand-in for src/ffmpeg.js's Decoder. The test feeds stdout (a PassThrough) with push(); `done` settles on
+ * end(), fail() or the player's kill(), or never, like a stream that keeps going.
  */
 export class FakeDecoder {
   stdout = new PassThrough();
