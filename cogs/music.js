@@ -246,13 +246,13 @@ export class Music extends Cog {
     }
     const res = await this.#library.resolve(query);
     if (!res?.ok) return msg.reply(this.#notFound(res));
-    // Where the caller is and the file's length/tags: the only waiting a handler does, in parallel and bounded.
+    // Where the caller is, and the file's length and tags: in parallel and time-boxed, as a handler must be.
     const [where, enriched] = await Promise.all([
       this.#within(this.#voice.channelOf(serverId, msg.author_id), LOOKUP_MS)
         .then((id) => ({ id }), (error) => ({ error })),
       this.#within(this.#library.enrich(res.track), PROBE_MS).catch(() => res.track),
     ]);
-    if (this.#closed) return undefined; // shutting down meanwhile: don't start a player now
+    if (this.#closed) return undefined; // cogUnload ran during the wait: don't start a player
     if (where.error) {
       this.#log.warn(`voice lookup for /play in ${serverId} failed:`, where.error);
       return msg.reply(lookupText(where.error));
@@ -260,15 +260,15 @@ export class Music extends Cog {
     if (!isId(where.id)) return msg.reply(NOT_IN_VOICE);
     const busy = this.#players.get(serverId);
     if (busy?.isBusy && !sameId(busy.channelId, where.id)) return msg.reply(this.#busyText(busy));
-    // A new session, or a move from another channel, joins voice: that's paced (see JOIN_GAP_MS).
-    const joins = !sameId(busy?.channelId, where.id); // a live player there is in that channel, or joining it
+    // A player with this channelId is in that channel or joining it; anything else is a join, which is paced.
+    const joins = !sameId(busy?.channelId, where.id);
     const wait = joins ? this.#joinWait(serverId, msg.author_id) : 0;
     if (wait > 0) return msg.reply(`⏳ Yapin’ limits how often I can join voice. Try again in ${inWords(wait)}.`);
 
     const player = this.#players.obtain(serverId);
     const track = enriched !== null && typeof enriched === 'object' ? enriched : res.track;
     track.requestedBy = isId(msg.author_id) ? String(msg.author_id) : null;
-    const fresh = !player.isBusy; // a new session (or a move): its cards go where this /play was typed
+    const fresh = !player.isBusy; // new session or a move: its cards go where this /play was typed
     let result;
     try {
       result = player.play(track, { channelId: where.id });
@@ -285,7 +285,7 @@ export class Music extends Cog {
       this.#nameChannel(player, where.id);
     }
     if (result.startedNow) {
-      // No reply yet: the Now Playing card answers this message once the music starts (or the error does).
+      // No reply now: the Now Playing card (or the error) answers this message once playback starts.
       if (isId(msg.id) && isId(msg.channel_id)) {
         this.#origins.set(track, { channelId: msg.channel_id, messageId: msg.id });
       }
@@ -317,7 +317,7 @@ export class Music extends Cog {
     const player = this.#players.get(serverId);
     const s = player && this.#sessions.get(player);
     if (!s || !player.current) return msg.reply(IDLE_TEXT);
-    // A fresh card answering this message; the old one loses its buttons (one live card per player).
+    // One live card per player: the old one loses its buttons and a new one answers this message.
     this.#step(s, async () => {
       await this.#retire(s);
       await this.#postCard(s, msg.channel_id, msg.id);
