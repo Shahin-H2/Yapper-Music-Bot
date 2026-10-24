@@ -33,10 +33,7 @@ const show = (raw) => {
 // .env values aren't shell-expanded. Only `~` and `~/x` are handled, not `~user`.
 const expandHome = (p) => (/^~(?=$|[\\/])/.test(p) ? path.join(os.homedir(), p.slice(1)) : p);
 
-/**
- * @param {Record<string, unknown>} [env]
- * @returns {Config}
- */
+/** @returns {Config} */
 export function loadConfig(env = process.env) {
   const source = env !== null && typeof env === 'object' ? env : {};
   const warnings = [];
