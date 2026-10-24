@@ -1,15 +1,7 @@
 /**
- * What Music Bot shows in chat: the Now Playing card and its buttons, the queue, the library and help, plus the
- * custom ids the buttons carry. Pure: builders take plain data (a PlayerSnapshot, Tracks) and return yapper.js
- * Embed and Row objects; nothing here does I/O or keeps state.
- *
- *   const s = player.snapshot();
- *   await bot.send(s.textChannelId, '', { embeds: [nowPlayingEmbed(s, { color })], components: controlRows(s) });
- *   const hit = parseCustomId(i.custom_id);   // a click on one of them: { action: 'skip', serverId } or null
- *
- * Titles, tags, file and station names come from users and files, so they go through sanitize() and can't format
- * the card or ping anyone. Every builder stays inside the platform limits whatever it gets (500-character titles,
- * a thousand files): text is cut between whole characters, lists between whole lines.
+ * What Music Bot shows in chat (Now Playing card and buttons, queue, library, help), built as yapper.js Embeds and
+ * Rows. Pure: no I/O, no state. Text from users and files goes through sanitize() so it can't format a card or ping
+ * anyone, and every builder stays within the platform limits whatever it is given.
  */
 import { Button, Embed, Row } from '../yapper.js';
 import { MAX_VOLUME, MIN_VOLUME, clampVolume } from './audio.js';
@@ -17,33 +9,32 @@ import { LOOP_MODES } from './queue.js';
 
 /** @typedef {import('./queue.js').LoopModeValue} LoopModeValue */
 /**
- * The Track fields read here (the full shape is in src/tracks.js); missing or malformed ones degrade, never throw.
+ * The Track fields read here (full shape in src/tracks.js); missing or malformed ones degrade, never throw.
  * @typedef {{ kind?: string, live?: boolean, title?: string, artist?: string|null, duration?: number|null,
  *   fileName?: string, stationId?: string, description?: string|null, url?: string|null,
  *   requestedBy?: string|null }} Track
  */
 /**
- * The PlayerSnapshot fields read here (player.snapshot() in src/player.js).
+ * The PlayerSnapshot fields read here (Player#snapshot in src/player.js).
  * @typedef {{ serverId?: string, channelName?: string|null, current?: Track|null, position?: number,
  *   paused?: boolean, volume?: number, loop?: LoopModeValue, upcoming?: Track[], next?: Track|null }} PlayerSnapshot
  */
 /** @typedef {{ title?: string, fileName?: string }} LocalTrack from listLocalTracks(); its path is never shown */
 /** @typedef {{ id?: string, name?: string }} Station */
-/** @typedef {string|number} Color '#rrggbb', 0xrrggbb or a yapper.js colour name ('red', 'blue', …) */
+/** @typedef {string|number} Color the builders' `color` option: '#rrggbb', 0xrrggbb or a yapper.js colour name */
 
-/** Message limits from the yapper.js docs: the API rejects embeds and buttons that go over them. */
+// From the yapper.js docs; the API rejects embeds and buttons that go over them.
 export const LIMITS = Object.freeze({
   title: 256, description: 4096, fields: 10, fieldName: 256, fieldValue: 1024, total: 6000,
   rows: 5, buttons: 5, label: 80, customId: 100,
 });
-/** The start of every custom id made here, and so the key of the cog's `buttons` handler. */
+// Starts every custom id made here; the cog routes clicks by it.
 export const CUSTOM_ID_PREFIX = 'music:';
-/** What the control buttons do: play/pause, skip, stop, next loop mode, volume down, volume up. */
 export const BUTTON_ACTIONS = Object.freeze(['toggle', 'skip', 'stop', 'loop', 'voldown', 'volup']);
 
 const ZWSP = '\u200b';
 const DEFAULT_COLOR = 0xff4fd8;
-// AUDIO_EXTENSIONS of src/tracks.js; tracksEmbed takes the real list as an option.
+// A copy of AUDIO_EXTENSIONS from src/tracks.js, which does I/O and so isn't imported; callers pass the real list.
 const DEFAULT_EXTENSIONS = Object.freeze(['.mp3', '.wav', '.flac', '.ogg', '.opus', '.m4a']);
 const LOOP_LABELS = new Map(LOOP_MODES.map((m) => [m, m[0].toUpperCase() + m.slice(1)]));
 const NAMED_COLORS = new Set(['red', 'green', 'blue', 'yellow', 'purple', 'orange', 'grey', 'gray']);
@@ -55,8 +46,8 @@ const QUEUE_PAGE_MAX = 25;
 const LIBRARY_PAGE_MAX = 50;
 
 const MARKDOWN = /[\\*_~`|[\]()>#]/g;
-// '@' starts @everyone, @here and @name, '<' starts <@id>, <@&role> and <#channel>: a zero-width space after either
-// leaves the text looking the same, but no longer a mention.
+// '@' starts @everyone, @here and @name; '<' starts <@id>, <@&role> and <#channel>. A zero-width space after either
+// looks the same but is no longer a mention.
 const PING = /[@<]/g;
 const SPACE = /^[\s\u0085]+$/;
 // Control characters, and the bidi overrides that would flip the rest of the line (times, mentions) around.
@@ -65,22 +56,19 @@ const SERVER_ID = /^[^\s\p{C}]+$/u;
 const USER_ID = /^[\w-]{1,64}$/;
 const USER_MENTION = /<@[\w-]{1,64}>/g;
 const COMMAND_NAME = /^[a-z0-9_-]{1,32}$/;
-// Text is cut between graphemes, so an emoji or an accented letter never ends up half there (half a surrogate
-// pair isn't even valid JSON text). Without ICU, code points still keep surrogate pairs together.
+// Text is cut between graphemes, so an emoji or accented letter is never left half there (half a surrogate pair
+// isn't even valid JSON text). Without ICU, iterating by code point still keeps surrogate pairs together.
 const SEGMENTER = typeof Intl === 'object' && typeof Intl.Segmenter === 'function'
   ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 
-/** The text of a value meant to be a string; objects, symbols and other junk show as nothing. */
 const str = (v) => (typeof v === 'string' ? v
   : typeof v === 'number' || typeof v === 'bigint' || typeof v === 'boolean' ? String(v) : '');
 const obj = (v) => (v !== null && typeof v === 'object' ? v : null);
 const list = (v) => (Array.isArray(v) ? v : []);
-/** A whole number in [min, max] from an option; anything that isn't a finite number gives the fallback. */
 const clampInt = (v, min, max, fallback) =>
   (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.floor(v))) : fallback);
 const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const limitOf = (max) => (typeof max === 'number' && max > 0 ? Math.floor(max) : 0);
-/** A bad argument as an error shows it: short plain strings quoted, anything else only named. */
 const show = (v) => (typeof v === 'string' ? (/^[\w .:-]{0,40}$/.test(v) ? `"${v}"` : 'a string')
   : typeof v === 'number' ? String(v) : v === null ? 'null' : typeof v);
 
@@ -90,7 +78,7 @@ function* graphemes(text) {
 }
 function* map(items, fn) { for (const x of items) yield fn(x); }
 
-/** The graphemes of text on one line: every run of whitespace (newlines too) is one space, controls are dropped. */
+/** The graphemes of text as one trimmed line: whitespace runs become one space, invisible characters are dropped. */
 function* cleaned(text) {
   let gap = false;
   let started = false;
@@ -105,16 +93,15 @@ function* cleaned(text) {
   }
 }
 
-/** One grapheme with its markdown characters escaped and its pings defused. */
 const escapeMd = (g) => g.replace(MARKDOWN, '\\$&').replace(PING, `$&${ZWSP}`);
 
 /**
- * Joins pieces while they fit in max; when they don't all fit, keeps the longest run that leaves room for '…'.
- * A piece (a grapheme, or an escape that must stay whole) is never split, and only the pieces needed are read.
+ * Joins pieces while they fit in max, else the longest run that leaves room for an ellipsis. A piece (a grapheme,
+ * or an escape that must stay whole) is never split, and the iterable is read only as far as needed.
  */
 function fit(pieces, max) {
   let out = '';
-  let room = 0; // where to cut: the end of the last visible piece that still leaves room for '…'
+  let room = 0; // where to cut: after the last visible piece that still leaves room for the ellipsis
   for (const p of pieces) {
     if (out.length + p.length > max) return max > 0 ? `${out.slice(0, room)}…` : '';
     out += p;
@@ -123,33 +110,23 @@ function fit(pieces, max) {
   return out;
 }
 
-/**
- * Cuts text to at most max characters, ending in '…' when something was cut. The cut falls between whole
- * characters (an emoji or an accented letter stays whole). For plain text: cutting markdown can unbalance it.
- * @param {unknown} text
- * @param {number} [max] default: no limit
- * @returns {string}
- */
+/** Cuts between whole graphemes, ending in an ellipsis when cut. Plain text only: cutting markdown can unbalance it. */
 export function truncate(text, max = Infinity) { return fit(graphemes(str(text)), limitOf(max)); }
 
 /**
- * Makes text from users or files (a file name, tag, URL, station name, query) safe in a message: one line, control
- * characters and bidi overrides gone, markdown escaped (\ * _ ~ ` | [ ] ( ) > #), pings defused by a zero-width
- * space after every @ and < (so @everyone, @here, <@id>, <@&id> and <#id> show as plain text), then cut to max
- * characters, escapes included, never inside one.
- * @param {unknown} text
- * @param {number} [max]
+ * Makes text from users or files safe in a message: one line, no control characters or bidi overrides, markdown
+ * escaped, pings defused, then cut to max characters (escapes included, never inside one).
  * @returns {string} '' for empty or non-text input
  */
 export function sanitize(text, max = 100) { return fit(map(cleaned(text), escapeMd), limitOf(max)); }
 
-/** sanitize() without the escapes, for footers (they aren't markdown, so a backslash would show). */
+/** sanitize() without the escapes, for footers: they don't render markdown, so a backslash would show. */
 const plain = (text, max) => fit(map(cleaned(text), (g) => g.replace(PING, `$&${ZWSP}`)), limitOf(max));
 /** Inline code. Escapes don't work between backticks, so a backtick in the text becomes ˋ instead. */
 const code = (text, max) =>
   `\`${fit(map(cleaned(text), (g) => g.replace(/`/g, 'ˋ').replace(PING, `$&${ZWSP}`)), limitOf(max - 2)) || '?'}\``;
 
-/** A status line such as '⏭ Skipped by <@id>': escaped like sanitize(), but each <@id> user mention stays whole. */
+/** Pieces of a status line, escaped like sanitize() except that <@id> user mentions stay whole. */
 function* statusPieces(text) {
   const line = [...cleaned(text)].join('');
   let at = 0;
@@ -163,13 +140,12 @@ function* statusPieces(text) {
 /** <@id> for something shaped like a user id, else null: a malformed id must not turn into markup. */
 const mention = (id) =>
   ((typeof id === 'string' && USER_ID.test(id)) || (Number.isSafeInteger(id) && id >= 0) ? `<@${id}>` : null);
-/** A server id as it goes in a custom id: a non-empty string (or whole number) without spaces or controls. */
 const serverIdOf = (v) => {
   const id = typeof v === 'string' ? v : Number.isSafeInteger(v) && v >= 0 ? String(v) : '';
   return SERVER_ID.test(id) ? id : null;
 };
 
-/** A colour Embed#color understands; anything else is the bot's pink (a NaN colour would go out as null). */
+/** A colour Embed#color understands, else the default pink (a NaN colour would be sent as null). */
 function colorOf(c) {
   if (Number.isInteger(c) && c >= 0 && c <= 0xffffff) return c;
   const s = typeof c === 'string' ? c.trim().toLowerCase() : '';
@@ -178,7 +154,7 @@ function colorOf(c) {
 }
 const newEmbed = (title, color) => new Embed().title(title).color(colorOf(color));
 
-/** The url if it's a plain https link (the only kind a card may point to), else null. */
+/** The normalized URL if it's a plain https link (the only kind a card may point to), else null. */
 function httpsUrl(u) {
   if (typeof u !== 'string' || u.length > 2048) return null;
   try {
@@ -193,21 +169,16 @@ function httpsUrl(u) {
 
 const isLive = (t) => (typeof t?.live === 'boolean' ? t.live : t?.kind === 'stream');
 const isLength = (v) => typeof v === 'number' && v > 0 && v <= Number.MAX_SAFE_INTEGER;
-/** A track's length in seconds, or null when it has none (live, unknown, or not a sane number). */
 const lengthOf = (t) => (!isLive(t) && isLength(t?.duration) ? t.duration : null);
-/** Seconds played: never negative, never past the end (a probed length can be a little short). */
+/** Seconds played, capped at the length: a probed length can be a little short. */
 const elapsed = (position, length) => {
   const at = typeof position === 'number' && position > 0 && position <= Number.MAX_SAFE_INTEGER ? position : 0;
   return length === null ? at : Math.min(at, length);
 };
-/** '🔴 LIVE', or the length as `m:ss` (`--:--` when unknown). */
 const lengthLabel = (t) => (isLive(t) ? '🔴 LIVE' : `\`${formatDuration(lengthOf(t))}\``);
 const volumeLabel = (v) => (typeof v === 'number' && Number.isFinite(v) ? `${clampVolume(v)}%` : '—');
 
-/**
- * A track's title and artist, escaped and together at most max characters with ' — ' between them. The artist gets
- * up to a third, or whatever a shorter title leaves.
- */
+/** Escaped title and artist within max, separator included; the artist gets up to a third or what the title leaves. */
 function nameParts(t, max) {
   // The first candidate with anything visible: sanitize(v, 1) is '' only for blank or non-text values.
   const raw = [t?.title, t?.fileName, t?.stationId].find((v) => sanitize(v, 1)) ?? 'Unknown track';
@@ -221,25 +192,23 @@ const trackName = (t, max) => {
   const { title, artist } = nameParts(t, max);
   return artist ? `${title} — ${artist}` : title;
 };
-/** **Title** — Artist, for the top of a card. */
 const heading = (t) => {
   const { title, artist } = nameParts(t, NAME_MAX);
   return `**${title}**${artist ? ` — ${artist}` : ''}`;
 };
-/** head + name + ' · length · requester', the name cut so the line stays within max. */
 function trackLine(head, t, max, length = lengthLabel(t)) {
   const by = mention(t?.requestedBy);
   const tail = ` · ${length}${by ? ` · ${by}` : ''}`;
   return `${head}${trackName(t, max - head.length - tail.length)}${tail}`;
 }
 
-/** Whole lines joined while they fit in max; the ones that don't are counted in a last '… and N more' line. */
+/** Joins whole lines while they fit in max; the ones that don't are counted in a final summary line. */
 function joinLines(lines, max) {
   let out = '';
   for (let i = 0; i < lines.length; i++) {
     const next = out ? `${out}\n${lines[i]}` : lines[i];
     const left = lines.length - i - 1;
-    // Room for the summary is kept as we go, so cutting at any line still fits.
+    // Room for the summary line is reserved at every step, so a cut at any line still fits.
     if (next.length + (left ? `\n… and ${left} more`.length : 0) > max) {
       const rest = `… and ${lines.length - i} more`;
       return out ? `${out}\n${rest}` : truncate(rest, max);
@@ -249,11 +218,7 @@ function joinLines(lines, max) {
   return out;
 }
 
-/**
- * A length in seconds as a clock: 0 → '0:00', 65 → '1:05', 3725 → '1:02:05' (fractions are dropped).
- * @param {unknown} seconds
- * @returns {string} '--:--' for anything that isn't a real length (null, NaN, < 0, Infinity, a string)
- */
+/** Seconds as m:ss or h:mm:ss, fractions dropped; '--:--' for anything that isn't a real length. */
 export function formatDuration(seconds) {
   if (typeof seconds !== 'number' || !(seconds >= 0) || seconds > Number.MAX_SAFE_INTEGER) return '--:--';
   const total = Math.floor(seconds);
@@ -263,13 +228,7 @@ export function formatDuration(seconds) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 
-/**
- * A bar of `width` symbols with a knob where the position is: progressBar(30, 100) → '▬▬▬▬🔘▬▬▬▬▬▬▬▬▬'.
- * @param {number} position seconds played (clamped to the track)
- * @param {number|null} duration seconds
- * @param {number} [width] 1 to 50
- * @returns {string} '' when the duration is unknown (null, 0, NaN, Infinity)
- */
+/** A bar of `width` (1 to 50) symbols with a knob at the position; '' when the duration is unknown. */
 export function progressBar(position, duration, width = 14) {
   if (!isLength(duration)) return '';
   const w = clampInt(width, 1, 50, 14);
@@ -277,22 +236,10 @@ export function progressBar(position, duration, width = 14) {
   return `${'▬'.repeat(knob)}🔘${'▬'.repeat(w - 1 - knob)}`;
 }
 
-/**
- * How a loop mode reads on the button and the cards.
- * @param {unknown} mode
- * @returns {'Off'|'Track'|'Queue'} 'Off' for anything that isn't a mode
- */
+/** 'Off', 'Track' or 'Queue'; 'Off' for anything that isn't a loop mode. */
 export function loopLabel(mode) { return LOOP_LABELS.get(mode) ?? 'Off'; }
 
-/**
- * The custom id of a control button: `music:<action>:<serverId>`. The server id rides along because a click
- * isn't documented to say which server it came from.
- * @param {string} action one of BUTTON_ACTIONS
- * @param {string|number} serverId
- * @returns {string}
- * @throws {TypeError} for an unknown action, or a server id that is missing or has spaces or control characters
- * @throws {RangeError} when the id would be longer than LIMITS.customId (100)
- */
+/** `music:<action>:<serverId>`: a click isn't documented to say which server it came from, so the id carries it. */
 export function customId(action, serverId) {
   if (!BUTTON_ACTIONS.includes(action)) {
     throw new TypeError(`Unknown button action ${show(action)}: use one of ${BUTTON_ACTIONS.join(', ')}`);
@@ -306,12 +253,7 @@ export function customId(action, serverId) {
   return id;
 }
 
-/**
- * The action and server id in a custom id made by customId(); null for anything else: another prefix, an unknown
- * action, no server id, a non-string, or more than 100 characters.
- * @param {unknown} id
- * @returns {{ action: string, serverId: string }|null}
- */
+/** @returns {{ action: string, serverId: string }|null} null for anything customId() wouldn't make */
 export function parseCustomId(id) {
   if (typeof id !== 'string' || id.length > LIMITS.customId || !id.startsWith(CUSTOM_ID_PREFIX)) return null;
   const rest = id.slice(CUSTOM_ID_PREFIX.length);
@@ -322,12 +264,9 @@ export function parseCustomId(id) {
 }
 
 /**
- * The buttons under the Now Playing card: [⏯ Pause|⏯ Resume, ⏭ Skip, ⏹ Stop] and [🔁 Loop: <mode>, 🔉 Vol -,
- * 🔊 Vol +]. Pause is primary, Resume success, Stop danger, the rest secondary. Vol - is disabled at MIN_VOLUME and
- * Vol + at MAX_VOLUME; a click that would overshoot clamps, so they stay enabled until then.
+ * Volume buttons disable only at the limits (a click that would overshoot clamps); volumeStep is the cog's.
  * @param {PlayerSnapshot} snapshot
- * @param {{ volumeStep?: number }} [opts] the cog applies volumeStep on a click; the buttons don't depend on it
- * @returns {Row[]} [] when snapshot.serverId can't go in a custom id (a card without buttons beats a rejected message)
+ * @returns {Row[]} [] when the server id can't go in a custom id: a card without buttons beats a rejected message
  */
 export function controlRows(snapshot, { volumeStep = 10 } = {}) {
   const s = obj(snapshot) ?? {};
@@ -349,14 +288,7 @@ export function controlRows(snapshot, { volumeStep = 10 } = {}) {
   ];
 }
 
-/**
- * The Now Playing card: the track in bold (+ artist), then '🔴 LIVE' (+ the station's description) for a stream or
- * a progress bar with `m:ss / m:ss` for a file; inline fields Requested by, Volume and Loop, then Up next; footer
- * '🔊 <voice channel> · <N> in queue'. The title links to track.url when that is https.
- * @param {PlayerSnapshot} snapshot
- * @param {{ color?: Color }} [opts]
- * @returns {Embed}
- */
+/** @param {PlayerSnapshot} snapshot */
 export function nowPlayingEmbed(snapshot, { color } = {}) {
   const s = obj(snapshot) ?? {};
   const t = obj(s.current);
@@ -390,13 +322,8 @@ export function nowPlayingEmbed(snapshot, { color } = {}) {
 }
 
 /**
- * A finished or stale Now Playing card, e.g. endedEmbed(track, `⏭ Skipped by <@${userId}>`): the status line, then
- * the track's name. The status line is escaped like sanitize() (so a username or an error reason can go in as is),
- * except that <@id> user mentions stay mentions.
+ * A finished or stale Now Playing card. `text` gets escaped, but <@id> user mentions in it stay mentions.
  * @param {Track|null} track
- * @param {string} text
- * @param {{ color?: Color }} [opts]
- * @returns {Embed}
  */
 export function endedEmbed(track, text, { color } = {}) {
   const t = obj(track);
@@ -405,13 +332,9 @@ export function endedEmbed(track, text, { color } = {}) {
 }
 
 /**
- * The queue: what's playing, then one page of what's waiting, numbered as /remove counts, each with its length and
- * requester. Footer 'Page x/y · N tracks · total h:mm:ss + live · Loop: Off': the total adds up the waiting tracks,
- * and '+ live' / '+ unknown' say that some of them have no length. An empty queue gets a friendly line instead.
+ * What's playing, then one page of what's waiting, numbered the way /remove counts.
  * @param {PlayerSnapshot} snapshot
- * @param {{ page?: number, pageSize?: number, color?: Color }} [opts] page is clamped to [1, pages],
- *   pageSize to [1, 25]
- * @returns {Embed}
+ * @param {{ page?: number, pageSize?: number, color?: Color }} [opts] page and pageSize (1 to 25) are clamped
  */
 export function queueEmbed(snapshot, { page = 1, pageSize = 10, color } = {}) {
   const s = obj(snapshot) ?? {};
@@ -445,7 +368,7 @@ export function queueEmbed(snapshot, { page = 1, pageSize = 10, color } = {}) {
   return embed.description(joinLines([...head, ...lines], LIMITS.description)).footer(footer.join(' · '));
 }
 
-/** The summed length of tracks, with '+ unknown' / '+ live' when some have none: '1:02:05 + live'. */
+/** Summed length, plus 'unknown' or 'live' when some tracks have none: '1:02:05 + live'. */
 function totalLength(tracks) {
   let sum = 0;
   let known = false;
@@ -481,13 +404,9 @@ function startsIn(s, position) {
 }
 
 /**
- * The reply to /play when the track was queued behind others: its name, position, length and, when every track
- * ahead of it has a known end, roughly when it starts.
- * @param {Track} track
- * @param {number} position its 1-based place among the waiting tracks (Player#play's position)
+ * The /play reply for a track queued behind others, with a rough start time when everything ahead has a known end.
+ * @param {number} position 1-based among the waiting tracks (Player#play's position)
  * @param {PlayerSnapshot} snapshot taken just after adding it (just before works too)
- * @param {{ color?: Color }} [opts]
- * @returns {Embed}
  */
 export function trackAddedEmbed(track, position, snapshot, { color } = {}) {
   const t = obj(track) ?? {};
@@ -503,17 +422,13 @@ export function trackAddedEmbed(track, position, snapshot, { color } = {}) {
   return embed;
 }
 
-/** 'a', 'a or b', 'a, b or c' */
 const orList = (words) => (words.length > 1 ? `${words.slice(0, -1).join(', ')} or ${words.at(-1)}` : words[0] ?? '');
 
 /**
- * The library: a page of local files numbered for /play <number> (with pageSize 20, page 2 starts at 21), and
- * the radio stations as `id` — name. With no files it says where they go and which formats play.
+ * The library: a page of local files numbered for /play <number>, then the radio stations.
  * @param {{ localTracks?: LocalTrack[], stations?: Station[], page?: number, pageSize?: number, color?: Color,
- *   folder?: string, extensions?: readonly string[] }} [opts] page is clamped to [1, pages], pageSize to [1, 50];
- *   folder names the music folder in the hint (default './music'; not an absolute path, it would show in chat);
- *   extensions are the playable ones (pass AUDIO_EXTENSIONS from src/tracks.js)
- * @returns {Embed}
+ *   folder?: string, extensions?: readonly string[] }} [opts] page and pageSize (1 to 50) are clamped; folder is
+ *   shown in chat, so never an absolute path; extensions: pass AUDIO_EXTENSIONS from src/tracks.js
  */
 export function tracksEmbed({ localTracks, stations, page = 1, pageSize = 20, color, folder = './music',
   extensions = DEFAULT_EXTENSIONS } = {}) {
@@ -550,11 +465,8 @@ export function tracksEmbed({ localTracks, stations, page = 1, pageSize = 20, co
 }
 
 /**
- * The command list, `/name` — description per line, in the order given. Entries without a valid command name
- * are left out.
+ * One line per command, in the order given; entries without a valid command name are left out.
  * @param {Iterable<{ name?: string, description?: string }>} commands
- * @param {{ color?: Color }} [opts]
- * @returns {Embed}
  */
 export function helpEmbed(commands, { color } = {}) {
   const lines = [];
