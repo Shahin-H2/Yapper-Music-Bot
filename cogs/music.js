@@ -67,7 +67,6 @@ const pageOf = (text) => (/^\d{1,6}$/.test(String(text ?? '')) ? Number(text) : 
 // Escaped for chat, minus the final period: callers put it inside their own sentence.
 const reasonOf = (err) => sanitize(err?.message || String(err || 'something went wrong'), 200).replace(/[.!]+$/, '');
 
-/** Rounded to whole seconds: '30 s', '1 min 30 s'. */
 function inWords(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
   const min = Math.floor(total / 60);
@@ -146,21 +145,9 @@ export class Music extends Cog {
   };
 
   /**
-   * @param {any} bot
-   * @param {object} [deps] test stand-ins; each defaults to the real thing
-   * @param {object} [deps.config] partial settings over the defaults; the environment isn't read
-   * @param {TrackLibrary} [deps.library]
-   * @param {VoiceDirectory} [deps.voiceDirectory]
-   * @param {(channelId: string, serverId: string, opts: { signal: AbortSignal }) => Promise<any>} [deps.connect]
-   *   `signal` aborts when the player gives up on the join
-   * @param {(track: Track) => any} [deps.spawnDecoder]
-   * @param {(ffmpegPath: string) => Promise<{ ok: boolean, version?: string|null, error?: Error|null }>}
-   *   [deps.checkFfmpeg]
-   * @param {{ setTimeout: Function, clearTimeout: Function }} [deps.timers] shared with the players
-   * @param {() => number} [deps.now] clock in ms
-   * @param {() => number} [deps.random] for /shuffle
-   * @param {import('../src/log.js').Logger} [deps.logger]
-   * @param {any} [deps.rtc] the @livekit/rtc-node module
+   * @param {object} [deps] test stand-ins, each defaulting to the real thing: `config` is merged over the defaults
+   *   without reading the environment, `connect`'s `signal` aborts when the player gives up on the join, and
+   *   `timers` drive the players too.
    */
   constructor(bot, deps = {}) {
     super(bot);
@@ -188,10 +175,9 @@ export class Music extends Cog {
     });
   }
 
-  /** For other cogs and tests. */
   get players() { return this.#players; }
 
-  /** Awaited by yapper.js before the bot starts. Never throws: problems are logged as warnings. */
+  /** Never throws: library and ffmpeg problems are logged, not fatal to startup. */
   async cogLoad() {
     const [warnings] = await Promise.all([
       Promise.resolve().then(() => this.#library.init())
@@ -217,8 +203,6 @@ export class Music extends Cog {
     const chats = [...this.#sessions.values()].map((s) => s.chain);
     await this.#within(Promise.allSettled(chats), FLUSH_MS).catch(() => {});
   }
-
-  // ---- commands ----
 
   async #play(msg) {
     const serverId = msg.server_id;
@@ -519,8 +503,6 @@ export class Music extends Cog {
     }
   }
 
-  // ---- buttons ----
-
   async #click(i) {
     // Answers aren't awaited, for the same reason as replies (see #command).
     try {
@@ -566,8 +548,6 @@ export class Music extends Cog {
     }
   }
 
-  // ---- voice events ----
-
   #voiceEvent(ev, left) {
     try {
       this.#voice.invalidate(ev?.server_id); // without a server id this clears every server
@@ -596,8 +576,6 @@ export class Music extends Cog {
     return player.state !== PlayerState.CONNECTING && typeof joinedAt === 'number'
       && this.#now() - joinedAt >= JOIN_GRACE_MS;
   }
-
-  // ---- players and their chat ----
 
   #createPlayer(serverId, volume, waitFor) {
     const c = this.#config;
