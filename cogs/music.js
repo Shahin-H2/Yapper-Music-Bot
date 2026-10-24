@@ -246,7 +246,6 @@ export class Music extends Cog {
     }
     const res = await this.#library.resolve(query);
     if (!res?.ok) return msg.reply(this.#notFound(res));
-    // Where the caller is, and the file's length and tags: in parallel and time-boxed, as a handler must be.
     const [where, enriched] = await Promise.all([
       this.#within(this.#voice.channelOf(serverId, msg.author_id), LOOKUP_MS)
         .then((id) => ({ id }), (error) => ({ error })),
@@ -260,7 +259,7 @@ export class Music extends Cog {
     if (!isId(where.id)) return msg.reply(NOT_IN_VOICE);
     const busy = this.#players.get(serverId);
     if (busy?.isBusy && !sameId(busy.channelId, where.id)) return msg.reply(this.#busyText(busy));
-    // A player with this channelId is in that channel or joining it; anything else is a join, which is paced.
+    // A player with this channelId is in that channel or joining it; otherwise this /play joins, which is paced.
     const joins = !sameId(busy?.channelId, where.id);
     const wait = joins ? this.#joinWait(serverId, msg.author_id) : 0;
     if (wait > 0) return msg.reply(`⏳ Yapin’ limits how often I can join voice. Try again in ${inWords(wait)}.`);
@@ -436,9 +435,8 @@ export class Music extends Cog {
   }
 
   /**
-   * { description, run } for `commands`; run answers with a short apology instead of failing silently. Replies are
-   * sent, not waited for: yapper.js waits out a 429 inside a send and handles one event at a time, so a rate-limited
-   * reply would hold up every server's events (a click has 3 s). A send that fails reaches the bot's 'error' event.
+   * A handler that throws is logged and answered with OOPS. Replies aren't awaited: yapper.js waits out a 429 inside
+   * a send, so an awaited reply could hold up every server's events. A failed send still reaches the 'error' event.
    */
   #command(description, fn) {
     return {
@@ -455,10 +453,7 @@ export class Music extends Cog {
     };
   }
 
-  /**
-   * What every control command starts with: a server, its player (with a track when `needTrack`) and the caller in
-   * the bot's voice channel. Then `act(player, session)` does the work and returns the reply.
-   */
+  /** The checks every control command shares; `act(player, session)` then returns the reply. */
   async #control(msg, act, { needTrack = false } = {}) {
     const serverId = msg.server_id;
     if (!isId(serverId)) return msg.reply(DM_TEXT);
@@ -466,14 +461,11 @@ export class Music extends Cog {
     if (!player || (needTrack && !player.current)) return msg.reply(IDLE_TEXT);
     const denied = await this.#denied(serverId, msg.author_id, player);
     if (denied) return msg.reply(denied);
-    if (player.destroyed || (needTrack && !player.current)) return msg.reply(IDLE_TEXT); // it ended while we looked
+    if (player.destroyed || (needTrack && !player.current)) return msg.reply(IDLE_TEXT); // ended during the lookup
     return msg.reply(act(player, this.#sessions.get(player)));
   }
 
-  /**
-   * Why `userId` may not control `player` (they're not in its voice channel), or null when they may. Fails open:
-   * when the lookup fails or is slow, they may.
-   */
+  /** Refusal if `userId` isn't in the player's voice channel, else null; fails open on a failed or slow lookup. */
   async #denied(serverId, userId, player, ms = LOOKUP_MS) {
     if (!this.#config.requireSameVoice || !isId(player?.channelId)) return null;
     let channelId;
@@ -492,25 +484,25 @@ export class Music extends Cog {
     return `🎵 What should I play? \`/play <track number or name>\`${links}. \`/tracks\` lists them all.`;
   }
 
-  /** A failed resolve as a reply: its message, plus what to type for each candidate. */
   #notFound(res) {
     const lines = [`${REASON_ICONS.get(res?.reason) ?? '❓'} ${res?.message || "I couldn't find that."}`];
     for (const c of Array.isArray(res?.candidates) ? res.candidates : []) {
-      const query = String(c?.query ?? '').replace(/[^\w-]/g, ''); // a track number or a station id
+      // A track number or station id; any other character is stripped so it can't break the code span.
+      const query = String(c?.query ?? '').replace(/[^\w-]/g, '');
       if (query) lines.push(`• \`/play ${query}\` — ${sanitize(c.label, 80)}`);
     }
     return lines.join('\n');
   }
 
   #busyText(player) {
-    // The name is looked up when the session starts; if that failed, ask again for next time (no waiting here).
+    // The lookup at session start may have failed: retry it for next time, without waiting.
     if (!player.channelName && isId(player.channelId)) this.#nameChannel(player, player.channelId);
     const doing = player.state === PlayerState.CONNECTING ? 'joining' : 'already playing in';
     return `🎶 I'm ${doing} ${this.#where(player, 'another voice channel')}. Join me there, or wait until `
       + 'the queue is done.';
   }
 
-  /** How long until `serverId`, and `userId`, may make the bot join voice again, in whole seconds (0: now). */
+  /** Ms until both the server and the user may make the bot join again, rounded up to whole seconds; 0 = now. */
   #joinWait(serverId, userId) {
     const now = this.#now();
     let wait = 0;
@@ -521,7 +513,7 @@ export class Music extends Cog {
     return Math.ceil(wait / 1000) * 1000;
   }
 
-  /** Notes a join for #joinWait; notes too old to matter go (the map is oldest first). */
+  /** Delete-then-set keeps #joins oldest first, so pruning can stop at the first recent entry. */
   #noteJoin(serverId, userId) {
     const now = this.#now();
     for (const key of [`s:${serverId}`, isId(userId) ? `u:${userId}` : null]) {
@@ -538,14 +530,14 @@ export class Music extends Cog {
   // ---- buttons ----
 
   async #click(i) {
-    // Answers are sent, not waited for (see #command): a click waiting out a rate limit would hold up every event.
+    // Answers aren't awaited, for the same reason as replies (see #command).
     try {
       const hit = parseCustomId(i?.custom_id);
       const serverId = isId(i?.server_id) ? i.server_id : hit?.serverId;
       const player = hit && !this.#closed ? this.#players.get(serverId) : undefined;
       const s = player ? this.#sessions.get(player) : undefined;
       const card = s?.card;
-      // The live card shows the current track; any other card of ours (an older song or session) is just dead.
+      // A click counts only on the live card while it shows the current track; other cards just lose their buttons.
       const live = () => !!card && s.card === card && card.track === player.current && !player.destroyed
         && (!isId(i.message_id) || sameId(i.message_id, card.messageId));
       if (!live()) {
@@ -557,13 +549,13 @@ export class Music extends Cog {
         void i.ephemeral(denied);
         return;
       }
-      if (!live()) { // the track changed while we looked
+      if (!live()) { // the track changed during the lookup
         void i.update({ components: null });
         return;
       }
       const { action } = hit;
       if (action === 'skip' || action === 'stop') {
-        s.card = null; // this answer finishes the card itself
+        s.card = null; // the update below finishes the card
         const verb = action === 'skip' ? '⏭ Skipped' : '⏹ Stopped';
         void i.update({ embeds: [endedEmbed(card.track, `${verb} by ${mentionOf(i.user_id)}`,
           { color: this.#color })], components: null });
@@ -574,7 +566,7 @@ export class Music extends Cog {
       if (action === 'toggle') player.togglePause();
       else if (action === 'loop') player.cycleLoop();
       else player.setVolume(player.volume + (action === 'volup' ? 1 : -1) * this.#config.volumeStep);
-      s.shown = s.version; // this answer shows the change: the batched refresh has nothing left to do
+      s.shown = s.version; // the update below shows the change, so the pending refresh has nothing to do
       const snap = player.snapshot();
       void i.update({ embeds: [this.#cardEmbed(snap)], components: this.#rows(snap) });
     } catch (err) {
@@ -586,16 +578,16 @@ export class Music extends Cog {
 
   #voiceEvent(ev, left) {
     try {
-      this.#voice.invalidate(ev?.server_id); // no server id: forgets every server
+      this.#voice.invalidate(ev?.server_id); // without a server id this clears every server
       if (this.#closed) return;
       const me = this.bot.me?.id;
       const ours = isId(me) && sameId(ev?.user_id, me);
       const players = isId(ev?.server_id) ? [this.#players.get(ev.server_id)].filter(Boolean) : this.#players.values();
       for (const player of players) {
-        // Without a channel id: someone else may have left ours (check), but our own leave can't be placed (ignore).
+        // No channel id: someone else's event may concern ours (check it), but our own leave can't be placed.
         const here = isId(ev?.channel_id) ? sameId(ev.channel_id, player.channelId) : !ours;
-        if (!here) continue; // another channel: someone else's business, or for us the old half of a move
-        // Someone came or went, or we just arrived (the one who asked may have left meanwhile): anyone still here?
+        if (!here) continue; // another channel; for our own events, the old half of a move
+        // Someone came or went, or we just arrived (the requester may have left meanwhile): recount the listeners.
         if (!ours || !left) player.checkPresence();
         else if (this.#settled(player)) {
           this.#log.info(`I was taken out of voice channel ${player.channelId} in ${player.serverId}`);
@@ -607,7 +599,6 @@ export class Music extends Cog {
     }
   }
 
-  /** Connected a while: our own voice_leave from before this connection (a /stop, then /play) can't be about it. */
   #settled(player) {
     const joinedAt = this.#sessions.get(player)?.joinedAt;
     return player.state !== PlayerState.CONNECTING && typeof joinedAt === 'number'
@@ -623,7 +614,7 @@ export class Music extends Cog {
       aloneTimeoutMs: c.aloneTimeoutMs, timers: this.#timers, logger: this.#sublog(String(serverId)),
       connect: (channelId, opts) => this.#connect(channelId, serverId, opts),
       spawnDecoder: (track) => this.#spawn(track),
-      // People in the bot's channel besides the bot. When this fails the player asks LiveKit instead.
+      // Excludes the bot. If this fails or is slow, the player falls back to LiveKit's participant count.
       countListeners: async () => {
         const me = this.bot.me?.id;
         return (await this.#voice.othersIn(serverId, player.channelId, isId(me) ? [me] : [])).length;
@@ -633,7 +624,7 @@ export class Music extends Cog {
     return player;
   }
 
-  /** Hooks a new player's events up to the chat. */
+  /** Creates the player's Session and turns its events into chat updates. */
   #watch(player) {
     /** @type {Session} */
     const s = { player, card: null, chain: Promise.resolve(), version: 0, shown: 0, refresh: null, joinedAt: null,
@@ -651,7 +642,7 @@ export class Music extends Cog {
       if (state === PlayerState.PLAYING || state === PlayerState.PAUSED) changed();
     });
     player.on('volumeChange', changed);
-    // A skip or a natural advance brings a new card (or the end of the queue) instead.
+    // A skip or an advance gets a new card (or the queue-end notice) instead of a refresh.
     player.on('queueUpdate', (info) => { if (info?.reason !== 'advance' && info?.reason !== 'skip') changed(); });
     player.on('trackStart', (track) => this.#trackStarted(s, track));
     player.on('trackError', (track, err) => this.#trackFailed(s, track, err));
@@ -668,14 +659,14 @@ export class Music extends Cog {
     this.#step(s, async () => {
       const { player } = s;
       if (s.card?.track === track && player.current === track && !player.destroyed) {
-        // The same track again (loop track, or a one-track queue loop): its card stays live and starts over,
-        // rather than a new card for every repeat (and a click on the old one going nowhere).
+        // The same track again (looping): its card stays live rather than a new card per repeat, which would
+        // leave clicks on the old card going nowhere.
         s.version++;
         this.#refreshSoon(s);
         return;
       }
       await this.#retire(s);
-      if (player.destroyed || player.current !== track) return; // over already: no card for it
+      if (player.destroyed || player.current !== track) return; // already over: no card
       const channelId = player.textChannelId;
       await this.#postCard(s, channelId, origin && sameId(origin.channelId, channelId) ? origin.messageId : null);
     });
@@ -691,9 +682,8 @@ export class Music extends Cog {
   }
 
   /**
-   * ffmpeg couldn't even start for a track (it passed the startup check, but was removed or moved since). Its error
-   * names the binary's path, which stays out of chat. When it's gone, /play refuses (and looks for it again now and
-   * then) as if the startup check had failed. → the reason for chat
+   * ffmpeg failed to start although the startup check passed (removed or moved since). Returns the reason for chat,
+   * without the binary's path that the error names. If it's gone, /play refuses and rechecks, as after a failed check.
    */
   #ffmpegFailed(err) {
     if (err.code !== 'ENOENT' && err.code !== 'EACCES') return "ffmpeg couldn't be started"; // e.g. out of file handles
@@ -704,7 +694,7 @@ export class Music extends Cog {
   }
 
   #joinFailed(s, err) {
-    s.reported = true; // the 'destroy' that follows doesn't say it again
+    s.reported = true; // so the 'destroy' that follows doesn't repeat it
     const track = s.player.current;
     const origin = track ? this.#origins.get(track) : undefined;
     if (track) this.#origins.delete(track);
@@ -714,7 +704,7 @@ export class Music extends Cog {
   #queueEnded(s, ms) {
     this.#step(s, () => this.#retire(s));
     if (ms > 0) {
-      // After a track that couldn't be played, "that was the last track" would read as if it had been.
+      // After a failed track, "that was the last track" would suggest it played.
       const ended = s.failedLast ? '📭 Nothing else is queued, so' : '✅ That was the last track.';
       this.#notify(s, `${ended} I'll leave ${this.#where(s.player)} in ${inWords(ms)} unless something new is `
         + 'played.');
@@ -728,7 +718,7 @@ export class Music extends Cog {
     }
   }
 
-  /** Joining voice: when it takes a while, say so (the /play gets no other answer until the music starts). */
+  /** A slow join gets a notice, since the /play has no other answer until the music starts. */
   #startJoinNotice(s) {
     this.#stopJoinNotice(s);
     s.joinNotice = this.#timers.setTimeout(() => {
@@ -771,14 +761,14 @@ export class Music extends Cog {
     return null; // 'stopped' was asked for (and answered); 'shutdown' needs no notice
   }
 
-  /** Turns the live card into a finished one ('⏭ Skipped by …') without buttons, when it shows `track`. */
+  /** Turns the live card into a finished one without buttons, if it still shows `track`. */
   #endCard(s, track, text) {
     if (!s) return;
     this.#step(s, () => this.#retire(s, (card) => (card.track === track
       ? endedEmbed(track, text, { color: this.#color }) : null)));
   }
 
-  /** Takes the buttons off the live card (showing `embedFor(card)` instead, when that gives an embed). */
+  /** Takes the buttons off the live card, swapping in `embedFor(card)` when that returns an embed. */
   async #retire(s, embedFor = null) {
     const card = s.card;
     s.card = null;
@@ -788,7 +778,6 @@ export class Music extends Cog {
       embed ? { embeds: [embed], components: null } : { components: null });
   }
 
-  /** Posts a Now Playing card for the current track and makes it the live one. */
   async #postCard(s, channelId, replyTo = null) {
     const { player } = s;
     const track = player.current;
@@ -800,10 +789,10 @@ export class Music extends Cog {
     if (!isId(msg?.id)) return;
     s.card = { channelId, messageId: msg.id, track };
     s.shown = version;
-    if (s.version !== version) this.#refreshSoon(s); // something changed while it was on its way
+    if (s.version !== version) this.#refreshSoon(s); // changed while the post was in flight
   }
 
-  /** Brings the live card up to date a moment from now: changes come in bursts, one edit covers them. */
+  /** Debounced: changes come in bursts, and one edit covers them. */
   #refreshSoon(s) {
     if (s.refresh !== null || this.#closed || !s.card || s.player.destroyed) return;
     s.refresh = this.#timers.setTimeout(() => {
@@ -819,19 +808,19 @@ export class Music extends Cog {
     }, REFRESH_MS);
   }
 
-  /** Queues chat work for a player behind what's already queued. Never rejects. */
+  /** Runs `work` after the session's earlier chat work. The chain never rejects. */
   #step(s, work) {
     s.chain = s.chain.then(work).catch((err) => this.#log.warn('updating the chat failed:', err));
     return s.chain;
   }
 
-  /** A notice about a player: a reply to `origin` (the /play it's about), else in the player's text channel. */
+  /** Replies to `origin` (the /play it concerns) when given, else posts in the player's text channel. */
   #notify(s, text, origin = null) {
     this.#step(s, () => (origin ? this.#send(origin.channelId, text, { replyTo: origin.messageId })
       : this.#send(s.player.textChannelId, text)));
   }
 
-  /** bot.send that never throws: → the message, or null. */
+  /** bot.send that never throws; resolves to the message or null. */
   async #send(channelId, content, opts = {}) {
     if (!isId(channelId)) return null;
     try {
@@ -855,13 +844,13 @@ export class Music extends Cog {
 
   #rows(snap) { return controlRows(snap, { volumeStep: this.#config.volumeStep }); }
 
-  /** The player's voice channel in a message: '🔊 **Lounge**', or `unknown` while its name isn't known. */
+  /** '🔊 **Lounge**', or `unknown` while the channel's name isn't known. */
   #where(player, unknown = 'the voice channel') {
     const name = sanitize(player?.channelName, 80);
     return name ? `🔊 **${name}**` : unknown;
   }
 
-  /** Sets player.channelName for messages and the card footer: the cached name now, Yapin’'s answer when it comes. */
+  /** Sets player.channelName from the cache now, and from Yapin’ when it answers (unless the player moved). */
   #nameChannel(player, channelId) {
     player.channelName = this.#names.get(String(channelId))?.name ?? null;
     void this.#channelName(channelId).then((name) => {
@@ -869,7 +858,7 @@ export class Music extends Cog {
     });
   }
 
-  /** A voice channel's name from Yapin’ (cached, lookups shared); null when unknown. Never rejects. */
+  /** Cached, with concurrent lookups shared; null when unknown. Never rejects. */
   #channelName(channelId) {
     const key = String(channelId);
     const hit = this.#names.get(key);
@@ -890,7 +879,7 @@ export class Music extends Cog {
     return entry.pending;
   }
 
-  /** Asks checkFfmpeg and keeps the answer; logs when ffmpeg goes missing or comes back. Never rejects. */
+  /** Logs only when ffmpeg goes missing or comes back. Never rejects. */
   async #checkFfmpegNow() {
     let result;
     try {
@@ -908,13 +897,13 @@ export class Music extends Cog {
     }
   }
 
-  /** ffmpeg was missing: look again in the background now and then (the owner may have installed it since). */
+  /** In the background, at most every FFMPEG_RECHECK_MS: the owner may have installed ffmpeg since. */
   #recheckFfmpeg() {
     if (this.#ffmpegCheck || this.#now() - this.#ffmpegAt < FFMPEG_RECHECK_MS) return;
     this.#ffmpegCheck = this.#checkFfmpegNow().finally(() => { this.#ffmpegCheck = null; });
   }
 
-  /** `work`'s result, or a TimeoutError after `ms` (the timer never outlives the wait). */
+  /** Rejects with a TimeoutError after `ms` without cancelling `work`; the timer never outlives the wait. */
   #within(work, ms) {
     return new Promise((resolve, reject) => {
       const timer = this.#timers.setTimeout(() => reject(timeoutError(ms)), ms);
