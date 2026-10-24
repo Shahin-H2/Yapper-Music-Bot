@@ -32,7 +32,7 @@ async function shutdown(bot, why, code = 0) {
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   watchdog.unref();
-  // Before unloading: while the bot runs, each unload sends Yapin’ the shrinking command list.
+  // Stop first: while the bot runs, every unload sends Yapin’ a shrinking command list.
   bot.stop();
   for (const name of [...bot.cogs.keys()].reverse()) {
     try {
