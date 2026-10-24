@@ -16,7 +16,7 @@ import { Readable } from 'node:stream';
 import { CHANNELS, SAMPLE_RATE } from './audio.js';
 
 /** Sent to radio servers as the User-Agent (some refuse requests without one). */
-export const USER_AGENT = 'DLS_bot/1.0';
+export const USER_AGENT = 'music-bot/1.0';
 /** How many characters of ffmpeg's stderr a Decoder keeps: the end, where the reason is. */
 export const STDERR_LIMIT = 4096;
 
