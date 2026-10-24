@@ -1,4 +1,4 @@
-// Tests for src/config.js and src/log.js (the logger belongs to the config task, so it is tested here too).
+// Tests for src/config.js and src/log.js.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -34,8 +34,8 @@ const DEFAULTS = Object.freeze({
 });
 
 /**
- * Check one variable: unset → default; each valid raw value → its parsed value, no warning, other fields untouched;
- * each invalid raw value → default plus exactly one warning naming the variable and the quoted value.
+ * Checks one variable: unset gives the default; each valid raw value parses with no warning and no other field
+ * changed; each invalid one gives the default plus exactly one warning naming the variable and the quoted value.
  */
 function checkVariable({ name, field, fallback, valid = [], invalid = [], why = null, shownFallback = fallback }) {
   assert.deepEqual(loadConfig({}).warnings, []);
@@ -63,7 +63,7 @@ describe('PROJECT_ROOT', () => {
   it('is the absolute project folder', () => {
     assert.ok(path.isAbsolute(PROJECT_ROOT));
     assert.equal(PROJECT_ROOT, ROOT);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8')).name, 'dls-bot');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8')).name, 'music-bot');
   });
 });
 
@@ -143,7 +143,7 @@ describe('loadConfig: defaults and shape', () => {
   });
 });
 
-describe('loadConfig: YAPPER_BOT_TOKEN → token', () => {
+describe('loadConfig: YAPPER_BOT_TOKEN', () => {
   it('is null when unset or blank', () => {
     assert.equal(loadConfig({}).token, null);
     assert.equal(loadConfig({ YAPPER_BOT_TOKEN: '  ' }).token, null);
@@ -167,27 +167,27 @@ describe('loadConfig: YAPPER_BOT_TOKEN → token', () => {
 
 describe('loadConfig: whole numbers', () => {
   const range = (min, max) => new RegExp(`whole number from ${min} to ${max}`);
-  it('DEFAULT_VOLUME → defaultVolume (1..200, % allowed)', () => checkVariable({
+  it('DEFAULT_VOLUME sets defaultVolume (1..200, % allowed)', () => checkVariable({
     name: 'DEFAULT_VOLUME', field: 'defaultVolume', fallback: 100, why: range(1, 200),
     valid: [['1', 1], ['150', 150], ['200', 200], [' 80 ', 80], ['+90', 90], ['007', 7], ['75%', 75], ['60 %', 60]],
     invalid: ['0', '201', 'abc', '1.5', '1e2', '-5', '0x10', '10 20', '%', '150%%', '200.0'],
   }));
-  it('VOLUME_STEP → volumeStep (1..100, % allowed)', () => checkVariable({
+  it('VOLUME_STEP sets volumeStep (1..100, % allowed)', () => checkVariable({
     name: 'VOLUME_STEP', field: 'volumeStep', fallback: 10, why: range(1, 100),
     valid: [['1', 1], ['25', 25], ['100', 100], ['5%', 5]],
     invalid: ['0', '101', 'ten', '2.5'],
   }));
-  it('MAX_QUEUE_SIZE → maxQueueSize (1..1000)', () => checkVariable({
+  it('MAX_QUEUE_SIZE sets maxQueueSize (1..1000)', () => checkVariable({
     name: 'MAX_QUEUE_SIZE', field: 'maxQueueSize', fallback: 100, why: range(1, 1000),
     valid: [['1', 1], ['250', 250], ['1000', 1000]],
     invalid: ['0', '1001', '50%', 'lots', '99999999999999999999'],
   }));
-  it('IDLE_TIMEOUT_SECONDS → idleTimeoutMs (0..3600 s)', () => checkVariable({
+  it('IDLE_TIMEOUT_SECONDS sets idleTimeoutMs (0..3600 s)', () => checkVariable({
     name: 'IDLE_TIMEOUT_SECONDS', field: 'idleTimeoutMs', fallback: 30000, shownFallback: 30, why: range(0, 3600),
     valid: [['0', 0], ['45', 45000], ['3600', 3600000]],
     invalid: ['-1', '3601', '1.5', '30s'],
   }));
-  it('ALONE_TIMEOUT_SECONDS → aloneTimeoutMs (0..3600 s)', () => checkVariable({
+  it('ALONE_TIMEOUT_SECONDS sets aloneTimeoutMs (0..3600 s)', () => checkVariable({
     name: 'ALONE_TIMEOUT_SECONDS', field: 'aloneTimeoutMs', fallback: 30000, shownFallback: 30, why: range(0, 3600),
     valid: [['0', 0], ['120', 120000], ['3600', 3600000]],
     invalid: ['-0.5', '3601', 'never'],
@@ -224,7 +224,7 @@ describe('loadConfig: yes/no switches', () => {
 });
 
 describe('loadConfig: paths', () => {
-  const elsewhere = path.join(os.tmpdir(), 'dls-elsewhere', 'songs');
+  const elsewhere = path.join(os.tmpdir(), 'music-bot-elsewhere', 'songs');
   for (const [name, field, fallback] of [
     ['MUSIC_DIR', 'musicDir', path.join(ROOT, 'music')],
     ['STATIONS_FILE', 'stationsFile', path.join(ROOT, 'config', 'stations.json')],
@@ -246,7 +246,7 @@ describe('loadConfig: paths', () => {
 
   it('resolves relative paths against PROJECT_ROOT, not process.cwd()', () => {
     const cwd = process.cwd();
-    const away = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+    const away = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
     try {
       process.chdir(away);
       const config = loadConfig({
