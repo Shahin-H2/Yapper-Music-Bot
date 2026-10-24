@@ -1,7 +1,7 @@
 /**
  * ffmpeg as the decoder (a local file or an http(s) stream in, 48 kHz stereo s16le PCM out on stdout), plus the
  * startup check and ffprobe lookups. Inputs are locked down with protocol whitelists: a file opens as `file:<path>`
- * with only the file protocol (so `concat:x.mp3` is just a name); a stream gets http(s) and the protocols under it.
+ * with only the file protocol (so `concat:x.mp3` stays a name); a stream gets http(s) and the protocols under it.
  */
 import { execFile, spawn as spawnProcess } from 'node:child_process';
 import path from 'node:path';
@@ -105,7 +105,7 @@ const failedDecoder = (error) =>
   decoder(Readable.from([]), Promise.resolve({ code: null, signal: null, stderr: '', error }));
 
 /**
- * Never throws: if ffmpeg can't start, stdout is empty and `done` carries the error, as for any failed track.
+ * Never throws: if ffmpeg can't start, stdout is empty and `done` holds the error; callers see a failed track.
  * @returns {Decoder}
  */
 export function spawnDecoder(track, { ffmpegPath = 'ffmpeg', spawn = spawnProcess } = {}) {
@@ -181,7 +181,7 @@ export async function checkFfmpeg(ffmpegPath = 'ffmpeg', { timeoutMs = 5000 } = 
   return { ok: false, version: null, error };
 }
 
-/** Matched case-insensitively: FLAC and Vorbis taggers write TITLE. */
+/** Tag names match case-insensitively: FLAC and Vorbis taggers write TITLE. */
 function tag(sets, name) {
   for (const tags of sets) {
     if (!tags || typeof tags !== 'object') continue;
