@@ -212,7 +212,7 @@ npm test                            # every suite in test/, run by node --test
 node --test test/player.test.js     # a single suite
 ```
 
-With ffmpeg installed, a full run reports:
+Everything runs offline and deterministically: fake timers, voice connections and decoders (`test/helpers.js`) drive the player and the cog step by step, and the integration suite talks to a stand-in Yapin’ API on 127.0.0.1. Without ffmpeg, the tests that need it are skipped rather than failed; with it installed, a full run reports:
 
 ```text
 ℹ tests 588
@@ -220,8 +220,6 @@ With ffmpeg installed, a full run reports:
 ℹ pass 588
 ℹ fail 0
 ```
-
-Everything runs offline and deterministically: fake timers, voice connections and decoders (`test/helpers.js`) drive the player and the cog step by step, and the integration suite talks to a stand-in Yapin’ API on 127.0.0.1. Without ffmpeg, the tests that need it are skipped rather than failed.
 
 - **Pure logic:** `queue` (every advance reason × loop mode × queue state, an unbiased Fisher-Yates shuffle), `audio` (the gain ramp's end points and clipping, framing with odd offsets and 1-byte chunks), `ui` (every card stays inside the message limits with hostile input; escaping; button states) and `config` (every variable's default, range and fallback warning).
 - **Processes and I/O:** `ffmpeg` (exact arguments, the decoder lifecycle, readable error summaries; with real ffmpeg, 1 s of WAV or FLAC decodes to exactly 100 frames), `tracks` (all eight `/play` resolution steps, path tricks that must stay inside the music folder, the shipped `stations.json`) and `voice` (the forced queue size, end-to-end encryption, clean-up at every failure point, voice-lookup caching).
