@@ -1,14 +1,7 @@
 /**
- * Deterministic fakes shared by the player and cog tests: no LiveKit, no ffmpeg, no real timers, no network.
- *
- *   const timers = new FakeTimers();        // inject as `timers`; await timers.advance(1500) fires what's due
- *   const voice = new FakeVoice();          // inject voice.connect; voice.last.source.frames = what was sent
- *   const decoders = new FakeDecoders();    // inject decoders.spawn; decoders.last.push(3).end()
- *   await flush();                          // let promises, nextTicks and stream events settle
- *   await until(() => voice.last?.frames.length === 3);
- *
- * Everything moves only when a test pushes it: frames when a decoder is fed, captureFrame when a gated source is
- * released, timers when the clock is advanced.
+ * Deterministic fakes for the player and cog tests: no LiveKit, no ffmpeg, no real timers, no network. Nothing moves
+ * until the test pushes it: frames when a decoder is fed, captureFrame when a gated source is released, timers when
+ * the clock is advanced.
  */
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -17,20 +10,17 @@ import { CHANNELS, FRAME_BYTES, SAMPLE_RATE, SAMPLES_PER_CHANNEL } from '../src/
 import { FfmpegStartError } from '../src/ffmpeg.js';
 
 /**
- * Lets everything already queued run: promise callbacks, process.nextTick and stream events. Each turn is one
- * setImmediate, which Node only reaches once those queues are empty. No real time passes.
- * @param {number} [turns]
+ * Lets queued promise callbacks, nextTicks and stream events run without real time passing. Each turn is one
+ * setImmediate, which Node only reaches once those queues are empty.
  */
 export async function flush(turns = 5) {
   for (let i = 0; i < turns; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 /**
- * Flushes until `predicate()` holds; fails the test (instead of hanging) once it has tried `turns` rounds and `ms`
- * of real time. The time floor is for work on real I/O, like a directory listing, which a busy machine's thread
- * pool can keep waiting for longer than a few hundred rounds take.
- * @param {() => unknown} predicate
- * @param {{ turns?: number, ms?: number, message?: string }} [opts]
+ * Flushes until `predicate()` holds, failing the test instead of hanging once both `turns` rounds and `ms` of real
+ * time are used up. The time floor is for real I/O (a directory listing, say), which a busy machine's thread pool
+ * can hold up for longer than a few hundred rounds take.
  */
 export async function until(predicate, { turns = 200, ms = 2000, message = 'the condition never came true' } = {}) {
   const deadline = Date.now() + ms;
@@ -42,9 +32,8 @@ export async function until(predicate, { turns = 200, ms = 2000, message = 'the 
 }
 
 /**
- * Collects unhandled promise rejections (call once per test file, at the top). Assert the array stays empty, e.g.
- * in afterEach: installing the listener stops Node from crashing on them, so the test has to.
- * @returns {unknown[]}
+ * Collects unhandled promise rejections; call it once per test file. The listener stops Node from crashing on them,
+ * so the test has to assert the array stays empty (in afterEach, say).
  */
 export function catchUnhandledRejections() {
   const seen = [];
@@ -52,7 +41,7 @@ export function catchUnhandledRejections() {
   return seen;
 }
 
-/** A logger that keeps its lines instead of printing them: { lines: [{ level, text }], debug, info, warn, error }. */
+/** A logger that keeps its lines as { level, text } instead of printing them. */
 export function quietLogger() {
   const lines = [];
   const at = (level) => (...args) => {
@@ -63,15 +52,9 @@ export function quietLogger() {
   return logger;
 }
 
-/** Every event the Player emits. */
 export const PLAYER_EVENTS = Object.freeze(['stateChange', 'trackStart', 'trackEnd', 'trackError', 'connectError',
   'queueEnd', 'alone', 'queueUpdate', 'volumeChange', 'destroy']);
 
-/**
- * Records events in the order they're emitted.
- * @param {EventEmitter} emitter
- * @param {readonly string[]} [names]
- */
 export function recordEvents(emitter, names = PLAYER_EVENTS) {
   /** @type {{ name: string, args: any[] }[]} */
   const log = [];
@@ -103,21 +86,14 @@ export function makeStreamTrack(title = 'Radio', extra = {}) {
   };
 }
 
-/**
- * `frames` 10 ms frames of s16le stereo PCM in which every sample equals `value`.
- * @param {number} [frames]
- * @param {number} [value] -32768..32767
- */
+/** `frames` 10 ms frames of s16le stereo PCM with every sample set to `value` (-32768..32767). */
 export function pcmBytes(frames = 1, value = 1000) {
   const bytes = Buffer.alloc(frames * FRAME_BYTES);
   for (let i = 0; i < bytes.length; i += 2) bytes.writeInt16LE(value, i);
   return bytes;
 }
 
-/**
- * Manual timers with the setTimeout/clearTimeout shape the player takes. Nothing fires until advance().
- * Handles are numbers; `now` is the fake clock in ms.
- */
+/** Manual setTimeout/clearTimeout for the player: nothing fires until advance(). `now` is the fake clock in ms. */
 export class FakeTimers {
   now = 0;
   /** @type {Map<number, { at: number, fn: () => void }>} */
@@ -133,16 +109,13 @@ export class FakeTimers {
 
   clearTimeout = (id) => { this.#due.delete(id); };
 
-  /** How many timers are waiting. */
   get pending() { return this.#due.size; }
 
-  /** The waiting timers' remaining delays, soonest first. */
   get delays() { return [...this.#due.values()].map((t) => t.at - this.now).sort((a, b) => a - b); }
 
   /**
-   * Moves the clock `ms` forward. Every timer that comes due fires in order (ties: the oldest first), each followed
-   * by a flush, so the work it starts — and timers that work sets within the window — run too.
-   * @param {number} [ms]
+   * Moves the clock `ms` forward. Each timer that comes due fires in order (oldest first on ties), followed by a
+   * flush, so the work it starts runs too, including timers that work sets within the window.
    */
   async advance(ms = 0) {
     const end = this.now + ms;
@@ -161,8 +134,8 @@ export class FakeTimers {
 }
 
 /**
- * A stand-in for src/ffmpeg.js's Decoder: stdout is a PassThrough the test feeds with push(), and `done` settles
- * when the test calls end()/fail() or the player calls kill() — or never, like a stream that keeps going.
+ * Stands in for src/ffmpeg.js's Decoder. The test feeds stdout (a PassThrough) with push(); `done` settles on end(),
+ * fail() or the player's kill(), or never, like a stream that keeps going.
  */
 export class FakeDecoder {
   stdout = new PassThrough();
@@ -182,7 +155,6 @@ export class FakeDecoder {
     this.stdout.on('error', () => {}); // like spawnDecoder: a destroyed pipe mustn't crash anything
   }
 
-  /** Whether kill() was called. */
   get killed() { return this.#killed; }
   /** The exit `done` resolved with, or null while it runs. */
   get result() { return this.#result; }
@@ -238,7 +210,6 @@ export class FakeDecoders {
   all = [];
   #script;
 
-  /** @param {((decoder: FakeDecoder, index: number) => void)|null} [script] */
   constructor(script = null) { this.#script = script; }
 
   spawn = (track) => {
@@ -285,18 +256,18 @@ export class FakeSource {
 
   /** From now on each captureFrame waits for release() or open(). */
   gate() { this.#gated = true; return this; }
-  /** Finishes the `n` oldest waiting captures. → how many */
+  /** Finishes the `n` oldest waiting captures and returns how many it finished. */
   release(n = 1) {
     const done = this.#waiting.splice(0, n);
     for (const resolve of done) resolve();
     return done.length;
   }
-  /** Ungates and finishes every waiting capture. → how many */
+  /** Ungates and finishes every waiting capture; returns how many. */
   open() {
     this.#gated = false;
     return this.release(Infinity);
   }
-  /** Captures waiting to be released. */
+  /** How many captures are waiting to be released. */
   get waiting() { return this.#waiting.length; }
 
   /** The next captureFrame rejects with `err`. */
@@ -337,7 +308,6 @@ export class FakeConnection extends EventEmitter {
     this.participants = participants;
   }
 
-  /** The samples of every frame sent. */
   get frames() { return this.source.frames; }
   get left() { return this.leaveCalls > 0; }
 
@@ -403,7 +373,7 @@ export class FakeVoice {
     return new Promise((resolve, reject) => { this.#pending.push({ channelId, resolve, reject }); });
   };
 
-  /** Completes the oldest pending connect(). → its FakeConnection */
+  /** Completes the oldest pending connect() and returns its FakeConnection. */
   resolve() {
     const next = this.#pending.shift();
     assert.ok(next, 'no connect() is pending');
