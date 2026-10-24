@@ -76,12 +76,12 @@ describe('buildFfmpegArgs', () => {
 
   test('a stream: http(s) protocols only, reconnects, a read timeout and our user agent', () => {
     const url = 'https://ice2.somafm.com/groovesalad-128-mp3';
-    assert.equal(USER_AGENT, 'DLS_bot/1.0');
+    assert.equal(USER_AGENT, 'music-bot/1.0');
     assert.deepEqual(buildFfmpegArgs({ kind: 'stream', live: true, input: url }), [
       '-hide_banner', '-loglevel', 'error', '-nostdin',
       '-protocol_whitelist', 'http,https,tcp,tls,crypto',
       '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_on_network_error', '1', '-reconnect_delay_max', '5',
-      '-rw_timeout', '15000000', '-user_agent', 'DLS_bot/1.0',
+      '-rw_timeout', '15000000', '-user_agent', 'music-bot/1.0',
       '-i', url,
       ...OUTPUT,
     ]);
@@ -440,7 +440,7 @@ describe('checkFfmpeg and probeFile without ffmpeg', () => {
   describe('with a fake binary', { skip: !POSIX && 'needs a POSIX shell', timeout: 20_000 }, () => {
     let dir;
     let fake;
-    const KEYS = ['DLS_FAKE_OUT', 'DLS_FAKE_EXIT', 'DLS_FAKE_SLEEP', 'DLS_FAKE_ARGS'];
+    const KEYS = ['MUSIC_BOT_FAKE_OUT', 'MUSIC_BOT_FAKE_EXIT', 'MUSIC_BOT_FAKE_SLEEP', 'MUSIC_BOT_FAKE_ARGS'];
     /** Runs fn while the fake behaves as `env` says (execFile hands children process.env). */
     const as = async (env, fn) => {
       const saved = KEYS.map((k) => process.env[k]);
@@ -452,38 +452,38 @@ describe('checkFfmpeg and probeFile without ffmpeg', () => {
       }
     };
     before(() => {
-      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
       fake = path.join(dir, 'fake-ffmpeg');
       fs.writeFileSync(fake, [
         '#!/bin/sh',
-        'if [ -n "$DLS_FAKE_ARGS" ]; then printf \'%s\\n\' "$@" > "$DLS_FAKE_ARGS"; fi',
-        'if [ -n "$DLS_FAKE_SLEEP" ]; then exec sleep "$DLS_FAKE_SLEEP"; fi', // exec: SIGKILL must hit sleep itself
-        'printf \'%s\\n\' "$DLS_FAKE_OUT"',
-        'exit "${DLS_FAKE_EXIT:-0}"', ''].join('\n'), { mode: 0o755 });
+        'if [ -n "$MUSIC_BOT_FAKE_ARGS" ]; then printf \'%s\\n\' "$@" > "$MUSIC_BOT_FAKE_ARGS"; fi',
+        'if [ -n "$MUSIC_BOT_FAKE_SLEEP" ]; then exec sleep "$MUSIC_BOT_FAKE_SLEEP"; fi', // exec: SIGKILL must hit sleep itself
+        'printf \'%s\\n\' "$MUSIC_BOT_FAKE_OUT"',
+        'exit "${MUSIC_BOT_FAKE_EXIT:-0}"', ''].join('\n'), { mode: 0o755 });
     });
     after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
     test('checkFfmpeg parses the version line', async () => {
       const out = 'ffmpeg version 1.2.3-test Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with clang';
-      const res = await as({ DLS_FAKE_OUT: out }, () => checkFfmpeg(fake));
+      const res = await as({ MUSIC_BOT_FAKE_OUT: out }, () => checkFfmpeg(fake));
       assert.deepEqual(res, { ok: true, version: '1.2.3-test', error: null });
     });
 
     test('checkFfmpeg rejects a program without the version line', async () => {
-      const res = await as({ DLS_FAKE_OUT: 'hello' }, () => checkFfmpeg(fake));
+      const res = await as({ MUSIC_BOT_FAKE_OUT: 'hello' }, () => checkFfmpeg(fake));
       assert.equal(res.ok, false);
       assert.match(res.error.message, /doesn't look like ffmpeg/);
     });
 
     test('checkFfmpeg reports a failing ffmpeg with its exit code', async () => {
-      const res = await as({ DLS_FAKE_OUT: 'ffmpeg version 9', DLS_FAKE_EXIT: '3' }, () => checkFfmpeg(fake));
+      const res = await as({ MUSIC_BOT_FAKE_OUT: 'ffmpeg version 9', MUSIC_BOT_FAKE_EXIT: '3' }, () => checkFfmpeg(fake));
       assert.equal(res.ok, false);
       assert.equal(res.error.message, `ffmpeg at "${fake}" failed: ffmpeg exited with code 3`);
     });
 
     test('checkFfmpeg gives up after timeoutMs', async () => {
       const started = Date.now();
-      const res = await as({ DLS_FAKE_SLEEP: '5' }, () => checkFfmpeg(fake, { timeoutMs: 100 }));
+      const res = await as({ MUSIC_BOT_FAKE_SLEEP: '5' }, () => checkFfmpeg(fake, { timeoutMs: 100 }));
       assert.equal(res.ok, false);
       assert.match(res.error.message, /didn't answer within 100 ms/);
       assert.ok(Date.now() - started < 2000);
@@ -501,7 +501,7 @@ describe('checkFfmpeg and probeFile without ffmpeg', () => {
         streams: [{ tags: { TITLE: 'Stream Title', ARTIST: ' Stream\tArtist\u0007 ' } }],
         format: { duration: '12.500000', tags: { title: '  Format\n Title  ' } },
       });
-      const env = { DLS_FAKE_OUT: out, DLS_FAKE_ARGS: argsFile };
+      const env = { MUSIC_BOT_FAKE_OUT: out, MUSIC_BOT_FAKE_ARGS: argsFile };
       const probe = (file) => as(env, () => probeFile(file, { ffprobePath: fake }));
       const argv = () => fs.readFileSync(argsFile, 'utf8').trimEnd().split('\n');
       const res = await probe('/music/x.flac');
@@ -517,16 +517,16 @@ describe('checkFfmpeg and probeFile without ffmpeg', () => {
 
     test('probeFile: nulls for output that is not JSON, an N/A duration with blank tags, or a failure', async () => {
       const probe = (env) => as(env, () => probeFile('/a.mp3', { ffprobePath: fake }));
-      assert.deepEqual(await probe({ DLS_FAKE_OUT: 'not json' }), NONE);
+      assert.deepEqual(await probe({ MUSIC_BOT_FAKE_OUT: 'not json' }), NONE);
       const na = '{"format":{"duration":"N/A","tags":{"title":"   "}},"streams":[]}';
-      assert.deepEqual(await probe({ DLS_FAKE_OUT: na }), NONE);
-      assert.deepEqual(await probe({ DLS_FAKE_OUT: '{"format":{"duration":"3.0"}}', DLS_FAKE_EXIT: '1' }), NONE);
-      assert.deepEqual(await probe({ DLS_FAKE_OUT: '{"format":{"duration":"3.0"}}' }), { ...NONE, duration: 3 });
+      assert.deepEqual(await probe({ MUSIC_BOT_FAKE_OUT: na }), NONE);
+      assert.deepEqual(await probe({ MUSIC_BOT_FAKE_OUT: '{"format":{"duration":"3.0"}}', MUSIC_BOT_FAKE_EXIT: '1' }), NONE);
+      assert.deepEqual(await probe({ MUSIC_BOT_FAKE_OUT: '{"format":{"duration":"3.0"}}' }), { ...NONE, duration: 3 });
     });
 
     test('probeFile: nulls after timeoutMs', async () => {
       const started = Date.now();
-      const res = await as({ DLS_FAKE_SLEEP: '5' }, () => probeFile('/a.mp3', { ffprobePath: fake, timeoutMs: 100 }));
+      const res = await as({ MUSIC_BOT_FAKE_SLEEP: '5' }, () => probeFile('/a.mp3', { ffprobePath: fake, timeoutMs: 100 }));
       assert.deepEqual(res, NONE);
       assert.ok(Date.now() - started < 2000);
     });
@@ -558,7 +558,7 @@ describe('with real ffmpeg', { timeout: 20_000 }, () => {
 
   before(() => {
     if (!ffmpeg.ok) return;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
     const make = (name, seconds, extra = []) => {
       const file = path.join(dir, name);
       execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi',
@@ -568,7 +568,7 @@ describe('with real ffmpeg', { timeout: 20_000 }, () => {
     fx.wav = make('tone.wav', 1);
     fx.flac = make('tone.flac', 1);
     fx.ten = make('ten.wav', 10);
-    fx.tagged = make('tagged.flac', 1, ['-metadata', 'title=Test Tone', '-metadata', 'artist=DLS_bot']);
+    fx.tagged = make('tagged.flac', 1, ['-metadata', 'title=Test Tone', '-metadata', 'artist=Music Bot']);
     if (POSIX) { // ':' isn't allowed in Windows file names
       fx.weird = path.join(dir, 'concat:weird #1.wav');
       fs.copyFileSync(fx.wav, fx.weird);
@@ -657,7 +657,7 @@ describe('with real ffmpeg', { timeout: 20_000 }, () => {
     assert.equal(tone.artist, null);
     const tagged = await probeFile(fx.tagged, { ffprobePath: FFPROBE });
     assert.equal(tagged.title, 'Test Tone');
-    assert.equal(tagged.artist, 'DLS_bot');
+    assert.equal(tagged.artist, 'Music Bot');
     assert.ok(Math.abs(tagged.duration - 1) <= 0.05);
     if (fx.weird) assert.ok(Math.abs((await probeFile(fx.weird, { ffprobePath: FFPROBE })).duration - 1) <= 0.05);
     const none = { duration: null, title: null, artist: null };
