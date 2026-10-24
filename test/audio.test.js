@@ -18,7 +18,6 @@ function prng(seed) {
 }
 
 const randomBytes = (rand, n) => Buffer.from(Array.from({ length: n }, () => Math.floor(rand() * 256)));
-/** Every byte of the frames, in order. */
 const bytesOf = (frames) => Buffer.concat(frames.map((f) => Buffer.from(f.buffer, f.byteOffset, f.byteLength)));
 /** Bytes padded with zeros up to whole frames. */
 const padded = (bytes) => {
@@ -119,7 +118,7 @@ describe('volumeToGain', () => {
 });
 
 describe('applyGain', () => {
-  test('gain 1 → 1 returns the same array without touching it', () => {
+  test('unity gain returns the same array untouched', () => {
     const samples = Int16Array.from([1, -1, 32767, -32768, 12345, -12345]);
     const before = Int16Array.from(samples);
     assert.equal(applyGain(samples, 1), samples);
