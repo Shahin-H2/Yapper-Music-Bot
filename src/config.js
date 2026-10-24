@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * Settings from environment variables; `npm start` loads .env, and .env.example documents each variable.
  * loadConfig never throws: an unusable value falls back to its default and adds a line to `warnings` (the token is
