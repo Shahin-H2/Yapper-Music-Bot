@@ -28,7 +28,7 @@ import { LOOP_MODES, Queue, nextLoopMode, parseLoopMode } from './queue.js';
  * @property {(event: string, fn: (...args: any[]) => void) => any} [off]
  */
 /**
- * Plain data for src/ui.js, tracks copied. `position` is in seconds; `next` plays when the current track ends.
+ * Plain data for src/ui.js, tracks copied. `position` is in seconds; `next` follows once `current` ends on its own.
  * @typedef {{ serverId: string, channelId: string|null, channelName: string|null, textChannelId: string|null,
  *   state: string, current: Track|null, position: number, paused: boolean, volume: number, loop: LoopModeValue,
  *   upcoming: Track[], next: Track|null }} PlayerSnapshot
@@ -92,8 +92,7 @@ function msOption(value, name) {
  * Events (never 'error'; a throwing listener is logged and can't break playback):
  *  - 'stateChange' (state), 'volumeChange' (volume)
  *  - 'queueUpdate' ({ reason }): 'add', 'advance', 'skip', 'shuffle', 'remove', 'clear' or 'loop'
- *  - 'trackStart' (track): its first audio is on the way. Once per play: a loop replay is a new play, a stream
- *    retry isn't
+ *  - 'trackStart' (track): first audio on its way; once per play (a loop replay is a new play, a retry isn't)
  *  - 'trackEnd' (track, { reason: 'ended'|'skipped'|'failed'|'stopped' }): pairs with 'trackStart'
  *  - 'trackError' (track, Error): unplayable, so dropped even when looping; the message is fit for chat
  *  - 'connectError' (Error): the join failed or timed out; the player then stops with 'error'
@@ -101,7 +100,6 @@ function msOption(value, name) {
  *  - 'destroy' ({ reason, error }): exactly once, after leaving voice
  */
 export class Player extends EventEmitter {
-  /** @type {string} */
   serverId;
   /** @type {string|null} the voice channel it plays in or is joining */
   channelId = null;
@@ -125,7 +123,7 @@ export class Player extends EventEmitter {
   #queue;
   #volume;
   #targetGain;              // the next frame ramps from #appliedGain to this
-  #appliedGain;             // the gain the last frame sent ended on
+  #appliedGain;
   #state = PlayerState.IDLE;
   #paused = false;
   /** @type {VoiceLink|null} */
@@ -255,10 +253,8 @@ export class Player extends EventEmitter {
   }
 
   /**
-   * Queues a track and returns at once; joining (or moving from an idle channel) and decoding run detached.
-   * @param {{ channelId?: string }} [opts] the voice channel to play in; defaults to the current one
-   * @returns {{ position: number, startedNow: boolean }} position is 0 when the track starts now, else its 1-based
-   *   place in the upcoming list
+   * Returns at once; joining (or moving from an idle channel) and decoding run detached.
+   * @returns {{ position: number, startedNow: boolean }} position: 0 if it starts now, else 1-based in upcoming
    * @throws {PlayerError} DESTROYED after stop(); BUSY_ELSEWHERE when busy in another channel
    * @throws {import('./queue.js').QueueFullError}
    */
@@ -305,10 +301,7 @@ export class Player extends EventEmitter {
     return this.pause() ? 'paused' : null;
   }
 
-  /**
-   * Silences the current track at once and moves on, unpausing. Works in any state, also mid-join or mid-retry.
-   * @returns {Track|null} the skipped track; null when nothing was playing
-   */
+  /** Unpauses and moves on, in any state (also mid-join or mid-retry). @returns {Track|null} null if none played */
   skip() {
     const track = this.#queue.current;
     if (this.destroyed || !track) return null;
@@ -323,16 +316,13 @@ export class Player extends EventEmitter {
   }
 
   /**
-   * Stops, forgets the queue and leaves voice, then emits 'destroy'. The player is dead from the first call (play()
-   * throws DESTROYED); later calls return the same promise, so the first reason wins.
-   * @param {string} [reason] one of STOP_REASONS
-   * @returns {Promise<void>} resolves after 'destroy'; never rejects
+   * Forgets the queue and leaves voice, then emits 'destroy'; never rejects. The player is dead from the first call
+   * (play() throws DESTROYED), and later calls return the same promise, so the first reason wins.
    */
   stop(reason = 'stopped') { return this.#shutdown(reason, null); }
 
   /**
-   * @param {number} volume percent, rounded and clamped to 1..200; the next frame ramps to it, so it doesn't click
-   * @returns {number} the volume set
+   * Percent, rounded and clamped to 1..200, and returned as set. The next frame ramps to it, so it doesn't click.
    * @throws {RangeError} when volume isn't a finite number
    */
   setVolume(volume) {
@@ -346,7 +336,6 @@ export class Player extends EventEmitter {
     return v;
   }
 
-  /** @returns {LoopModeValue} the new mode */
   cycleLoop() { return this.setLoop(nextLoopMode(this.#queue.loop)); }
 
   /** Also takes parseLoopMode's aliases ('all', 'one', ...); throws a TypeError for anything else. */
@@ -365,10 +354,6 @@ export class Player extends EventEmitter {
     return n;
   }
 
-  /**
-   * @param {number} position 1-based place in the upcoming list
-   * @throws {RangeError} when there's no such position
-   */
   remove(position) {
     const track = this.#queue.remove(position);
     this.#emit('queueUpdate', { reason: 'remove' });
@@ -535,10 +520,7 @@ export class Player extends EventEmitter {
     }
   }
 
-  /**
-   * One decoder run, until its output ends or the play is aborted. Resolves { frames, error, retry, voiceError }:
-   * `error` is fit for chat, `retry` says another try could help, `voiceError` means sending failed.
-   */
+  /** One decoder run. Resolves { frames, error (fit for chat), retry (worth another try), voiceError }. */
   async #decode(play, conn) {
     const { track } = play;
     let dec;
@@ -685,7 +667,7 @@ export class Player extends EventEmitter {
     this.#markDestroyed();
   }
 
-  /** Detaches our listeners, then leaves. Bounded; never throws. */
+  /** Bounded; never throws. */
   async #hangUp(conn) {
     this.#detach(conn);
     try {
@@ -763,7 +745,6 @@ export class Player extends EventEmitter {
     if (ms === 0 && !this.destroyed) void this.#shutdown('alone', null);
   }
 
-  /** The countdown ran out: one last look before leaving. */
   async #confirmAlone(conn, round) {
     const count = await this.#countPeople(conn);
     if (this.destroyed || this.#conn !== conn || round !== this.#aloneRound) return; // cancelled meanwhile
@@ -806,7 +787,7 @@ export class Player extends EventEmitter {
   /**
    * Waits for `promise` (null: nothing) for at most `ms`, giving up once `until()` holds; that's checked now and on
    * every #kick(). Resolves the promise's value, TIMED_OUT or KICKED, or rejects with the promise. The timer never
-   * outlives the wait, so stop() (which kicks every wait) leaves no timers behind.
+   * outlives the wait, so a kicked wait leaves no timer behind.
    */
   #park(promise, { ms = null, until = null } = {}) {
     return new Promise((resolve, reject) => {
@@ -835,7 +816,6 @@ export class Player extends EventEmitter {
     this.#emit('stateChange', state);
   }
 
-  /** A throwing listener is logged instead of breaking playback. */
   #emit(event, ...args) {
     try { this.emit(event, ...args); } catch (err) { this.#log.error(`a '${event}' listener threw:`, err); }
   }
@@ -863,7 +843,7 @@ export class PlayerManager {
     this.#defaultVolume = clampVolume(defaultVolume);
   }
 
-  /** @returns {Player|undefined} undefined once the server's player was stopped */
+  /** @returns {Player|undefined} undefined when the server has no player or it was stopped */
   get(serverId) {
     const player = this.#players.get(String(serverId));
     return player && !player.destroyed ? player : undefined;
