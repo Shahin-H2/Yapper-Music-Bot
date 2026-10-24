@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 // Tests for src/config.js and src/log.js.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
