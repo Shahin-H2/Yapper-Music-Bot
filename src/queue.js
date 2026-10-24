@@ -33,7 +33,7 @@ export function nextLoopMode(mode) {
 }
 
 /**
- * Accepts the aliases above in any case, with surrounding spaces.
+ * Accepts the aliases above, ignoring case and surrounding spaces.
  * @returns {LoopModeValue|null} null when the text isn't a loop mode
  */
 export function parseLoopMode(text) {
@@ -147,7 +147,7 @@ export class Queue {
     return a.length;
   }
 
-  /** The current track plays on. @returns {number} how many were removed */
+  /** Empties the upcoming list; the current track stays. @returns {number} how many were removed */
   clear() {
     const n = this.#upcoming.length;
     this.#upcoming = [];
