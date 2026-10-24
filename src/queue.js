@@ -5,7 +5,7 @@
 
 /** @typedef {'off'|'track'|'queue'} LoopModeValue */
 /** @typedef {'ended'|'skipped'|'failed'} AdvanceReason */
-/** @typedef {object} Track Shape in src/tracks.js; the queue holds references and never reads them. */
+/** @typedef {object} Track Shape in src/tracks.js; the queue never reads it. */
 
 export const LoopMode = Object.freeze({ OFF: 'off', TRACK: 'track', QUEUE: 'queue' });
 /** In the order the loop button cycles through them (nextLoopMode). */
