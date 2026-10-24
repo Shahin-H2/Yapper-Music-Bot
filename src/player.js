@@ -46,7 +46,7 @@ export const PLAYER_TIMINGS = Object.freeze({
   presenceDebounceMs: 1500,
   countTimeoutMs: 5000,     // a slower countListeners() counts as "unknown"
   playoutTimeoutMs: 2000,
-  exitTimeoutMs: 5000,     // ffmpeg closed its output: time to exit before it's killed
+  exitTimeoutMs: 5000,      // ffmpeg closed its output: time to exit before it's killed
   retryBaseMs: 1000,        // a dropped live stream is retried after 1 s, 2 s, 4 s, ...
   goodStreamMs: 30000,      // the retry count starts over once a stream has played this long
   waitForTimeoutMs: 15000,  // the server's previous player gets this long to leave voice
@@ -301,7 +301,7 @@ export class Player extends EventEmitter {
     return this.pause() ? 'paused' : null;
   }
 
-  /** Unpauses and moves on, in any state (also mid-join or mid-retry). @returns {Track|null} null if none played */
+  /** Unpauses and moves on, even mid-join or mid-retry. @returns {Track|null} the skipped track, if any */
   skip() {
     const track = this.#queue.current;
     if (this.destroyed || !track) return null;
@@ -368,8 +368,8 @@ export class Player extends EventEmitter {
   }
 
   /**
-   * Called on voice_join/voice_leave. Debounced to one check per burst, since a check can cost a rate-limited voice
-   * lookup. Nobody else in the channel starts a countdown to stop('alone'); someone coming back cancels it.
+   * The cog calls it on voice_join/voice_leave. Debounced to one check per burst, since a check can cost a rate-limited
+   * voice lookup. Nobody else in the channel starts a countdown to stop('alone'); someone coming back cancels it.
    */
   checkPresence() {
     if (this.destroyed || this.#presenceTimer !== null) return;
