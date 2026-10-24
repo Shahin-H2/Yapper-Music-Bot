@@ -1172,7 +1172,7 @@ describe('Music cog: voice events and unloading', OPTS, () => {
     const unloading = ctx.bot.unload('Music').then(() => { done = true; });
     await ctx.timers.advance(3999);
     assert.equal(done, false);
-    await ctx.timers.advance(1); // 4 s: plenty for a healthy leave, and well inside bot.js's 8 s shutdown
+    await ctx.timers.advance(1); // 4 s: enough for a healthy leave, and well inside bot.js's 8 s shutdown
     await until(() => done);
     await unloading;
     await ctx.timers.advance(20_000); // the player's own leave timeout runs out too
