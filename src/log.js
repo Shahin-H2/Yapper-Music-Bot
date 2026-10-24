@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * Leveled logger that writes one line per call: `<ISO time> <LEVEL> [scope] <message>`.
  * Loggers created without a level follow the global one (LOG_LEVEL at import, then setLogLevel()).
