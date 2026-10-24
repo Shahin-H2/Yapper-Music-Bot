@@ -1,5 +1,5 @@
 /**
- * DLS_bot's entry point: `npm start` runs `node --env-file=.env bot.js`.
+ * Music Bot's entry point: `npm start` runs `node --env-file=.env bot.js`.
  *
  * Reads the settings (src/config.js), starts the yapper.js bot with every cog in ./cogs and, on Ctrl+C or SIGTERM,
  * shuts down cleanly: event polling stops first, then each cog unloads (the music cog leaves every voice channel),
