@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
