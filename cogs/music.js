@@ -1,12 +1,8 @@
 /**
- * Music Bot's Music cog: every command, button and voice event, as thin glue. A handler parses what was typed, checks
- * it, hands the work to src/ (TrackLibrary finds tracks, one Player per server plays them, VoiceDirectory knows who
- * is in which voice channel) and answers with a card from src/ui.js.
- *
- * yapper.js handles one event at a time and a click has to be answered within 3 s, so a handler awaits at most a
- * voice lookup and a file probe, in parallel and bounded, and never its own reply (the SDK waits out a rate limit
- * inside a send). Joining voice and playing run in the background; what happens there (Now Playing cards, errors,
- * leaving) is posted from the Player's events, in order, per player.
+ * The music cog: commands, buttons and voice events as thin glue over src/ (tracks, players, voice, cards).
+ * yapper.js handles one event at a time and awaits each handler, and a click must be answered within 3 s, so
+ * handlers keep their waits short and bounded and never await their own replies (see #command). Joining voice and
+ * playback run detached; what happens there is posted from each Player's events, in order.
  */
 import path from 'node:path';
 import * as rtc from '@livekit/rtc-node';
@@ -26,35 +22,34 @@ import { VoiceDirectory, connectVoice } from '../src/voice.js';
 
 /** @typedef {import('../src/tracks.js').Track} Track */
 /**
- * @typedef {object} Session what the cog keeps per Player for the chat side
+ * @typedef {object} Session the chat side of one Player
  * @property {Player} player
  * @property {{ channelId: string, messageId: string, track: Track }|null} card the Now Playing card with live buttons
- * @property {Promise<void>} chain this player's chat work, in order (a card never overtakes the notice before it)
+ * @property {Promise<void>} chain chat work in order, so a card never overtakes the notice before it
  * @property {number} version bumped by every change the card shows (pause, volume, loop, queue)
  * @property {number} shown the version the card shows
- * @property {any} refresh the timer of a pending card refresh, or null
- * @property {number|null} joinedAt when the current voice connection came up (cog clock)
- * @property {boolean} reported the failed join was posted already
- * @property {any} joinNotice the timer of the "still joining" notice, or null
- * @property {boolean} failedLast the last track couldn't be played (so the queue's end isn't "that was the last track")
+ * @property {any} refresh pending card-refresh timer, or null
+ * @property {number|null} joinedAt when the current voice connection came up (#now)
+ * @property {boolean} reported a failed join was already posted
+ * @property {any} joinNotice pending "still joining" timer, or null
+ * @property {boolean} failedLast the last track failed, so the queue end can't say "that was the last track"
  */
 
-// How long things may take, in ms.
-const LOOKUP_MS = 3000;         // which voice channel someone is in (VoiceDirectory gives up after 2.5 s itself)
-const BUTTON_LOOKUP_MS = 1500;  // the same for a click, which has to be answered within 3 s
-const PROBE_MS = 2000;          // a file's length and tags; slower, and it plays as "length unknown" this time
+const LOOKUP_MS = 3000;         // backstop: VoiceDirectory gives up after 2.5 s itself
+const BUTTON_LOOKUP_MS = 1500;  // shorter: a click must be answered within 3 s
+const PROBE_MS = 2000;          // ffprobe for length and tags; a slower file plays without them this time
 const NAME_TTL_MS = 10 * 60_000; // voice channel names, for messages and the card footer
 const NO_NAME_TTL_MS = 30_000;
-const REFRESH_MS = 1500;        // edits to the Now Playing card are batched this long
-const JOIN_GRACE_MS = 5000;     // our own voice_leave this soon after joining is older news (a /stop, then a /play)
-const JOIN_NOTICE_MS = 2500;    // joining voice takes longer than this: say so (the /play has no other answer yet)
-// Yapin’ allows a bot 10 voice joins and leaves a minute, for all servers together: a server, and a person, may make
+const REFRESH_MS = 1500;        // Now Playing card edits are batched this long
+const JOIN_GRACE_MS = 5000;     // our own voice_leave this soon after joining is the previous session's (a /stop, then a /play)
+const JOIN_NOTICE_MS = 2500;
+// Yapin’ allows a bot 10 voice joins and leaves a minute across all servers. Each server, and each person, may make
 // it join once per JOIN_GAP_MS (3 joins and their leaves a minute), so nobody can use up everyone's budget.
 const JOIN_GAP_MS = 20_000;
 const FFMPEG_RECHECK_MS = 30_000;
-const LEAVE_STEP_MS = 3000;     // per step of leaving voice, so a shutdown fits bot.js's 8 s watchdog
-const UNLOAD_MS = 4000;         // cogUnload: how long the players get to leave voice …
-const FLUSH_MS = 1500;          // … and then their last chat updates (both well inside bot.js's 8 s)
+const LEAVE_STEP_MS = 3000;     // per step of leaving voice; a shutdown must fit bot.js's 8 s watchdog
+const UNLOAD_MS = 4000;         // cogUnload: for the players to leave voice
+const FLUSH_MS = 1500;          // cogUnload: then for their last chat updates
 
 const DM_TEXT = '🚫 This only works in a server.';
 const IDLE_TEXT = '💤 Nothing is playing right now. Start something with `/play`.';
