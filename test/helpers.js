@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * Deterministic fakes for the player and cog tests: no LiveKit, no ffmpeg, no real timers, no network. Nothing moves
  * until the test pushes it: frames when a decoder is fed, captureFrame when a gated source is released, timers when
