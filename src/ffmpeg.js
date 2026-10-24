@@ -31,10 +31,7 @@ function httpUrl(text) {
   }
 }
 
-/**
- * @param {{ kind: 'file'|'stream', input: string }} track a file needs an absolute path, a stream an http(s) URL
- * @throws {TypeError} for anything else
- */
+/** A file track needs an absolute path and a stream an http(s) URL; anything else throws a TypeError. */
 export function buildFfmpegArgs(track) {
   const input = track?.input;
   // spawn refuses NUL bytes anyway; refusing here keeps the error a TypeError about the track.
@@ -53,10 +50,7 @@ export function buildFfmpegArgs(track) {
   throw new TypeError(`Unknown track kind ${show(track.kind)} (expected "file" or "stream")`);
 }
 
-/**
- * ffmpeg couldn't be started at all; `code` is the system error code ('ENOENT', say). The message names the
- * binary's path: fit for the log, not for chat.
- */
+/** ffmpeg couldn't start (`code`: 'ENOENT' and the like). The message names the binary's path: for logs, not chat. */
 export class FfmpegStartError extends Error {
   constructor(message, { cause, code = null } = {}) {
     super(message, { cause });
@@ -111,10 +105,7 @@ const failedDecoder = (error) =>
   decoder(Readable.from([]), Promise.resolve({ code: null, signal: null, stderr: '', error }));
 
 /**
- * Never throws: when ffmpeg can't start, stdout is empty and `done` carries the error, so the player handles it like
- * any failed track.
- * @param {{ kind: 'file'|'stream', input: string }} track
- * @param {{ ffmpegPath?: string, spawn?: typeof spawnProcess }} [opts] spawn is injectable for tests
+ * Never throws: if ffmpeg can't start, stdout is empty and `done` carries the error, as for any failed track.
  * @returns {Decoder}
  */
 export function spawnDecoder(track, { ffmpegPath = 'ffmpeg', spawn = spawnProcess } = {}) {
