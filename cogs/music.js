@@ -209,7 +209,7 @@ export class Music extends Cog {
     for (const warning of Array.isArray(warnings) ? warnings : []) this.#log.warn(warning);
   }
 
-  /** Stops every player (out of voice, buttons off the last cards), bounded so a shutdown can't hang on it. */
+  /** Stops every player and flushes its chat work, bounded by UNLOAD_MS and FLUSH_MS so a shutdown can't hang. */
   async cogUnload() {
     this.#closed = true;
     for (const s of this.#sessions.values()) {
