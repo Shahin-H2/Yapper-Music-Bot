@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 // Tests for src/tracks.js and the shipped config/stations.json.
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
