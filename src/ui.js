@@ -23,7 +23,7 @@ import { LOOP_MODES } from './queue.js';
 /** @typedef {{ id?: string, name?: string }} Station */
 /** @typedef {string|number} Color the builders' `color` option: '#rrggbb', 0xrrggbb or a yapper.js colour name */
 
-// From the yapper.js docs; the API rejects embeds and buttons that go over them.
+// Limits from the yapper.js docs; the API rejects embeds and buttons that go over them.
 export const LIMITS = Object.freeze({
   title: 256, description: 4096, fields: 10, fieldName: 256, fieldValue: 1024, total: 6000,
   rows: 5, buttons: 5, label: 80, customId: 100,
@@ -264,7 +264,8 @@ export function parseCustomId(id) {
 }
 
 /**
- * Volume buttons disable only at the limits (a click that would overshoot clamps); volumeStep is the cog's.
+ * Volume buttons disable only at the limits, since a click that would overshoot clamps. volumeStep is unused here:
+ * the cog applies it on a click.
  * @param {PlayerSnapshot} snapshot
  * @returns {Row[]} [] when the server id can't go in a custom id: a card without buttons beats a rejected message
  */
@@ -334,7 +335,7 @@ export function endedEmbed(track, text, { color } = {}) {
 /**
  * What's playing, then one page of what's waiting, numbered the way /remove counts.
  * @param {PlayerSnapshot} snapshot
- * @param {{ page?: number, pageSize?: number, color?: Color }} [opts] page and pageSize (1 to 25) are clamped
+ * @param {{ page?: number, pageSize?: number, color?: Color }} [opts] pageSize (max 25) and page are clamped
  */
 export function queueEmbed(snapshot, { page = 1, pageSize = 10, color } = {}) {
   const s = obj(snapshot) ?? {};
@@ -406,7 +407,7 @@ function startsIn(s, position) {
 /**
  * The /play reply for a track queued behind others, with a rough start time when everything ahead has a known end.
  * @param {number} position 1-based among the waiting tracks (Player#play's position)
- * @param {PlayerSnapshot} snapshot taken just after adding it (just before works too)
+ * @param {PlayerSnapshot} snapshot taken right after adding it (right before works too)
  */
 export function trackAddedEmbed(track, position, snapshot, { color } = {}) {
   const t = obj(track) ?? {};
@@ -427,7 +428,7 @@ const orList = (words) => (words.length > 1 ? `${words.slice(0, -1).join(', ')} 
 /**
  * The library: a page of local files numbered for /play <number>, then the radio stations.
  * @param {{ localTracks?: LocalTrack[], stations?: Station[], page?: number, pageSize?: number, color?: Color,
- *   folder?: string, extensions?: readonly string[] }} [opts] page and pageSize (1 to 50) are clamped; folder is
+ *   folder?: string, extensions?: readonly string[] }} [opts] pageSize (max 50) and page are clamped; folder is
  *   shown in chat, so never an absolute path; extensions: pass AUDIO_EXTENSIONS from src/tracks.js
  */
 export function tracksEmbed({ localTracks, stations, page = 1, pageSize = 20, color, folder = './music',
