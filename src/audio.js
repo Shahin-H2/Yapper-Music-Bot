@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * PCM between ffmpeg and LiveKit: cuts the decoded byte stream into frames and applies the volume as a gain.
  * Pure: no I/O beyond the stream passed in.
