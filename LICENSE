@@ -1,0 +1,26 @@
+Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
+This repository and everything in it, including the source code, documentation and
+configuration files (the "Software"), is proprietary and confidential to the copyright
+holder, except for the third-party components listed below.
+
+The Software is published for portfolio viewing only. You may view the source code on
+GitHub. No other right or license is granted. Without prior written permission from the
+copyright holder, you may not use, run, copy, modify, merge, publish, distribute,
+sublicense, sell, or create derivative works of the Software, in whole or in part.
+
+Publishing this repository on GitHub gives other GitHub users only the limited rights
+set out in the GitHub Terms of Service (such as viewing it and forking it within GitHub).
+Those rights do not extend to any use outside GitHub.
+
+Third-party components are not covered by this notice and remain under their own terms:
+  - yapper.js, the Yapin' bot SDK
+  - the packages installed into node_modules/ by npm, such as @livekit/rtc-node
+    (Apache License 2.0)
+  - the radio streams listed in config/stations.json, which belong to their broadcasters
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO
+EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+To ask for permission, contact Shahin-H2 on GitHub.
