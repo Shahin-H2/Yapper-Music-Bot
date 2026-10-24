@@ -119,7 +119,7 @@ class FakeApi {
     }
     if (method === 'GET' && route === '/me') {
       if (this.meError) throw this.meError;
-      return { id: BOT, username: 'DLS_bot' };
+      return { id: BOT, username: 'Music_Bot' };
     }
     throw apiError(404, `no fake route for ${method} ${route}`);
   };
@@ -128,7 +128,7 @@ class FakeApi {
 /** A Bot with the Music cog loaded on fakes, a music folder with `files` and one radio station. */
 async function setup({ files = ['Alpha.mp3', 'Beta.mp3', 'Gamma.mp3'], config = {}, ffmpeg = true,
   voice = new FakeVoice(), decoders = new FakeDecoders(), stations = JSON.stringify(STATIONS), library } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
   const musicDir = path.join(dir, 'music');
   fs.mkdirSync(musicDir);
   for (const name of files) fs.writeFileSync(path.join(musicDir, name), ''); // never decoded: decoders are fakes
@@ -138,7 +138,7 @@ async function setup({ files = ['Alpha.mp3', 'Beta.mp3', 'Gamma.mp3'], config = 
   api.setVoice({ [LOUNGE]: [USER], [GAMING]: [] });
   const bot = new Bot('yb_test', { gateway: false, log: false });
   bot.api = api.call;
-  bot.me = { id: BOT, username: 'DLS_bot' };
+  bot.me = { id: BOT, username: 'Music_Bot' };
   const errors = [];
   bot.on('error', (err) => { errors.push(err); });
   const timers = new FakeTimers();
