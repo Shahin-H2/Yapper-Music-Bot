@@ -583,7 +583,7 @@ describe('Queue#shuffle', () => {
     assert.equal(calls, 4);
   });
 
-  it('survives a random() returning junk: still a permutation, no holes', () => {
+  it('survives a random() outside [0, 1) or not a number: still a permutation, no holes', () => {
     const waiting = Object.values(tracks('ABCDEF'));
     for (const value of [NaN, 1, 1.5, -1, -0.5, Infinity, -Infinity, undefined, null, '0.5']) {
       const q = build({ upcoming: waiting });
