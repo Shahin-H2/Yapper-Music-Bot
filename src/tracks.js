@@ -1,15 +1,7 @@
 /**
- * What /play can play: audio files in the music folder, radio presets (config/stations.json) and, when allowed,
- * http(s) stream links. resolveQuery turns what someone typed into a Track, or says why it can't.
- *
- *   const library = new TrackLibrary({ musicDir, stationsFile, ffprobePath });
- *   for (const w of await library.init()) log.warn(w);
- *   const res = await library.resolve('groove salad');   // → { ok: true, track, match: 'station' }
- *   if (!res.ok) return msg.reply(res.message);          // + res.candidates: [{ label, query }] to pick from
- *   player.play(await library.enrich(res.track), …);     // files gain a duration and their tag title/artist
- *
- * A query is only ever compared with the folder listing, never turned into a path, so '../../.env' or '/etc/passwd'
- * can't reach a file outside the music folder. Links to this computer or its private network are refused.
+ * What /play can play: music-folder files, radio presets (config/stations.json) and, if allowed, http(s) streams.
+ * A query is only compared with the folder listing, never turned into a path, so '../../.env' can't reach a file
+ * outside the music folder. Links to this machine or its private network are refused.
  */
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -22,29 +14,25 @@ import { probeFile } from './ffmpeg.js';
  * @property {boolean} live true for streams (radio): pausing drops audio instead of holding ffmpeg back
  * @property {string} title
  * @property {string|null} artist
- * @property {string} input absolute file path (file) or http(s) URL (stream)
+ * @property {string} input absolute file path or http(s) URL
  * @property {'local'|'station'|'url'} source
  * @property {number|null} duration seconds; null when unknown or live
  * @property {string|null} fileName local files only
- * @property {string|null} stationId station presets only
- * @property {string|null} description a station's description
- * @property {string|null} url https page for the embed title (a station's homepage), else null
- * @property {string|null} requestedBy user id (the cog sets it)
+ * @property {string|null} stationId stations only
+ * @property {string|null} description stations only
+ * @property {string|null} url https page the embed title links to (a station's homepage)
+ * @property {string|null} requestedBy user id, set by the cog
  */
-/** @typedef {{ fileName: string, path: string, title: string, ext: string }} LocalTrack one audio file */
-/**
- * @typedef {{ id: string, name: string, url: string, description: string|null, homepage: string|null }} Station
- * A radio preset; `homepage` is always https (or null).
- */
+/** @typedef {{ fileName: string, path: string, title: string, ext: string }} LocalTrack */
+/** @typedef {{ id: string, name: string, url: string, description: string|null, homepage: string|null }} Station */
 /** @typedef {{ label: string, query: string }} Candidate `query` is what to type after /play to pick it */
 /**
  * @typedef {{ ok: true, track: Track, match: 'url'|'station'|'file'|'index'|'fuzzy' }
  *   | { ok: false, reason: 'empty'|'bad_url'|'urls_disabled'|'bad_index'|'not_found'|'ambiguous', message: string,
- *       candidates?: Candidate[] }} Resolution `message` is ready for chat; candidates come with ambiguous (and
- *   not_found when something is close)
+ *       candidates?: Candidate[] }} Resolution `message` is ready to post; `candidates` are options to offer
  */
 
-/** File extensions the library lists, in any case (SONG.MP3 counts). */
+/** Matched case-insensitively (SONG.MP3 counts). */
 export const AUDIO_EXTENSIONS = Object.freeze(['.mp3', '.wav', '.flac', '.ogg', '.opus', '.m4a']);
 
 // Must hold a letter, so an id can never be mistaken for a track number (/play 3).
@@ -53,15 +41,15 @@ const INDEX = /^#?\d+$/;
 const RADIO = /^(?:radio|station)\s*:/i;
 const MAX_CANDIDATES = 5;
 const LABEL_MAX = 80;
-// Fuzzy search costs about query words × library size, on the thread that feeds every server's audio: nobody types a
-// longer search, and a crafted one over a big library could stall playback for longer than LiveKit's audio buffer.
+// Fuzzy search costs query words times library size, on the thread that feeds every server's audio. No real search
+// is this long, and a crafted one over a big library could stall playback for longer than LiveKit's audio buffer.
 const SEARCH_MAX = 200;
 const PROBE_CACHE_SIZE = 2000;
 const LIST_HINT = '/tracks lists the tracks and stations.';
 const LINKS_OFF = `Playing links is turned off on this bot. ${LIST_HINT}`;
 const PRIVATE_LINK = "I don't play links to the computer I run on or to its local network, only public streams.";
-// Where a link may not point (ffmpeg would fetch it from the bot's own machine): loopback, private, carrier-grade
-// NAT, link-local (cloud metadata), benchmarking, multicast and reserved ranges, as literal addresses.
+// Literal addresses a link may not point at, since ffmpeg fetches it from the bot's own machine: loopback, private,
+// carrier-grade NAT, link-local (cloud metadata), benchmarking, multicast and reserved ranges.
 const PRIVATE_NETS = new net.BlockList();
 for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
   ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15],
@@ -69,11 +57,10 @@ for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0',
 for (const [address, prefix] of [['::', 96], ['64:ff9b::', 96], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]]) {
   PRIVATE_NETS.addSubnet(address, prefix, 'ipv6');
 }
-// Schemes that need no '//' (javascript:alert(1), data:…, mailto:…). Any other "word:" is plain text:
-// "Muse: Uprising" and "AC:DC" are things people search for, not links.
+// Schemes that count as links without '//'; any other "word:" is search text ("Muse: Uprising", "AC:DC").
 const BARE_SCHEMES = new Set(['about', 'blob', 'concat', 'data', 'file', 'ftp', 'ftps', 'http', 'https', 'javascript',
   'magnet', 'mailto', 'rtmp', 'rtsp', 'sftp', 'spotify', 'subfile', 'tel', 'vbscript', 'view-source', 'ws', 'wss']);
-// Web pages, not audio: ffmpeg would only fetch HTML and fail. Saying so now beats a failed track after joining voice.
+// Web pages, not audio: ffmpeg would only fetch HTML and fail, so these are refused before joining voice.
 const SERVICES = [
   ['YouTube', ['youtube.com', 'youtu.be', 'youtube-nocookie.com']],
   ['Spotify', ['spotify.com', 'spotify.link']],
@@ -87,25 +74,23 @@ const SERVICES = [
 const PAIRS = new Map([['<', '>'], ['"', '"'], ["'", "'"], ['`', '`'],
   ['“', '”'], ['‘', '’'], ['«', '»'], ['„', '“']]);
 
-/** One line of display text: control and bidi-override characters out, whitespace collapsed. */
+// One line of display text: control and bidi-override characters out, whitespace collapsed.
 const clean = (text) => text.replace(/[\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069]+/gu, ' ')
   .replace(/\s+/g, ' ').trim();
-/** Cut to `max` characters with '…', never splitting a surrogate pair. */
+// Cuts to `max` characters with an ellipsis, never splitting a surrogate pair.
 const truncate = (text, max) => (text.length <= max ? text
   : `${text.slice(0, max - 1).replace(/[\uD800-\uDBFF]$/, '')}…`);
-/** A bad config value as a warning shows it. */
+// How warnings describe a bad config value.
 const show = (v) => (typeof v === 'string' ? JSON.stringify(truncate(v, 40))
   : v === null ? 'null' : Array.isArray(v) ? 'an array' : typeof v);
-/**
- * What someone typed, as a message quotes it back: short plain text only, so mentions, markdown and links are never
- * echoed into chat (and nothing that reads like a domain, which chat would turn into a link).
- */
+// Typed text as a reply quotes it back: short plain text only, so mentions, markdown and links (or anything chat
+// would turn into a link, like a domain) are never echoed. Anything else is replaced by `fallback`.
 const quote = (text, fallback = 'your search') => {
   const t = text.normalize('NFC');
   return /^[\p{L}\p{N}][\p{L}\p{N} .,'’&!?()+-]{0,39}$/u.test(t) && !/\.\p{L}{2}/u.test(t) ? `“${t}”` : fallback;
 };
 
-/** The URL object of an http(s) URL whose host has a letter or digit in it, else null. */
+// The parsed URL if `text` is http(s) with a real host (one with a letter or digit), else null.
 function httpUrl(text) {
   if (typeof text !== 'string') return null;
   try {
@@ -116,20 +101,13 @@ function httpUrl(text) {
   }
 }
 
-/**
- * Whether `text` is an http(s) URL with a host.
- * @param {unknown} text
- * @returns {boolean}
- */
 export function isHttpUrl(text) {
   return httpUrl(text) !== null;
 }
 
-/**
- * Whether a URL's host (as new URL() writes it: 2130706433, 0x7f.1 and 127.1 all become 127.0.0.1) is this computer
- * or a private, link-local or multicast address. Literal addresses and localhost names only: a public name that
- * resolves to a private address, or a redirect to one, still gets through, since ffmpeg resolves and follows those.
- */
+// Whether a hostname, as new URL() canonicalizes it (2130706433, 0x7f.1 and 127.1 all become 127.0.0.1), is this
+// machine or a private, link-local or multicast address. Literal addresses and localhost names only: a public name
+// resolving to a private address, or a redirect to one, still gets through, since ffmpeg resolves and follows those.
 function isPrivateHost(hostname) {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
@@ -143,12 +121,7 @@ function isPrivateHost(hostname) {
   return PRIVATE_NETS.check(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`, 'ipv4');
 }
 
-/**
- * Whether `text` reads as a link of any kind: `scheme://…`, or a scheme that needs no slashes (javascript:, data:,
- * file:, mailto: …). /play uses it to answer "only http(s) links" instead of searching for the text.
- * @param {unknown} text
- * @returns {boolean}
- */
+/** Whether `text` reads as a link of any kind (scheme://, or a slashless scheme like data:), not a search. */
 export function looksLikeUrl(text) {
   if (typeof text !== 'string') return false;
   const t = text.trim();
@@ -158,12 +131,7 @@ export function looksLikeUrl(text) {
   return scheme !== undefined && BARE_SCHEMES.has(scheme.toLowerCase());
 }
 
-/**
- * Text as searches compare it: diacritics stripped ('Beyoncé' → 'beyonce'), lowercase, apostrophes dropped
- * ("Don't" → 'dont'), anything else that isn't a letter or digit a single space. Letters of every script are kept.
- * @param {unknown} text
- * @returns {string} '' for a non-string
- */
+/** Search form of text: lowercase, no diacritics or apostrophes, and other non-letter/digit runs as one space. */
 export function normalize(text) {
   if (typeof text !== 'string') return '';
   return text.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase()
@@ -171,12 +139,7 @@ export function normalize(text) {
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-/**
- * A display title from a file name: the extension off, '_' as spaces, whitespace collapsed, case kept
- * ('My_Song.MP3' → 'My Song'). Only a real extension goes: 'Mr. Brightside' stays whole.
- * @param {unknown} name
- * @returns {string} '' for a non-string
- */
+/** 'My_Song.MP3' -> 'My Song', case kept; only a real extension goes, so 'Mr. Brightside' stays whole. */
 export function titleFromFilename(name) {
   if (typeof name !== 'string') return '';
   return clean(name.replace(/\.[\p{L}\p{N}]{1,10}$/u, '').replace(/_/g, ' ')) || clean(name);
@@ -187,7 +150,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 const byFileName = (a, b) => collator.compare(a.fileName, b.fileName)
   || (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0);
 
-/** The listing plus what went wrong reading the folder (TrackLibrary#init turns that into a warning). */
+/** A folder that can't be read gives no tracks plus the error, which init() turns into a warning. */
 async function readMusicDir(musicDir) {
   if (typeof musicDir !== 'string' || !musicDir || musicDir.includes('\0')) return { tracks: [], error: null };
   const dir = path.resolve(musicDir);
@@ -218,10 +181,9 @@ async function readMusicDir(musicDir) {
 }
 
 /**
- * The audio files directly in `musicDir` (no sub-folders, no hidden files), in natural order: the order /tracks
- * numbers them in. Never throws: a missing or unreadable folder gives [].
- * @param {string} musicDir
- * @returns {Promise<LocalTrack[]>} `path` is absolute, `ext` lowercase ('.mp3')
+ * Audio files directly in `musicDir` (no sub-folders or hidden files), in natural order: the numbering /tracks
+ * shows. `path` is absolute, `ext` lowercase. A missing or unreadable folder gives [].
+ * @returns {Promise<LocalTrack[]>}
  */
 export async function listLocalTracks(musicDir) {
   try {
@@ -232,11 +194,9 @@ export async function listLocalTracks(musicDir) {
 }
 
 /**
- * Checks radio presets. A bad entry is skipped (or a bad optional field left out) with a warning; never throws.
- * Ids are lowercased and must be 1-32 of a-z, 0-9, '-' and '_' with at least one letter; `url` must be http(s);
- * `homepage` must be https. The first of two entries with the same id wins.
- * @param {unknown} data the parsed JSON: an array of { id, name, url, description?, homepage? }
- *   (or { stations: [...] })
+ * Validates parsed stations JSON: an array of { id, name, url, description?, homepage? }, or { stations: [...] }.
+ * Bad entries are skipped and bad optional fields dropped, each with a warning; never throws. Ids are lowercased and
+ * the first entry with a given id wins.
  * @returns {{ stations: Station[], warnings: string[] }} the stations are frozen
  */
 export function parseStations(data) {
@@ -291,10 +251,8 @@ export function parseStations(data) {
 }
 
 /**
- * Reads and checks a stations file (see parseStations). Never throws: a missing or broken file gives no stations and a
- * warning. No file configured (null/'') gives no stations and no warning.
- * @param {string|null|undefined} file
- * @returns {Promise<{ stations: Station[], warnings: string[] }>}
+ * Reads a stations file through parseStations. Never throws: a missing or broken file gives no stations and a
+ * warning; no file configured (null or '') gives no stations, silently.
  */
 export async function loadStations(file) {
   if (file === undefined || file === null || file === '') return { stations: [], warnings: [] };
@@ -311,7 +269,7 @@ export async function loadStations(file) {
   }
   let data;
   try {
-    data = JSON.parse(text.replace(/^\ufeff/, '')); // Windows editors like to start files with a BOM
+    data = JSON.parse(text.replace(/^\ufeff/, '')); // some Windows editors start files with a BOM
   } catch (err) {
     return { stations: [], warnings: [`Stations file ${file} isn't valid JSON (${err.message}); no radio stations`] };
   }
@@ -326,12 +284,7 @@ const isStation = (s) => s !== null && typeof s === 'object' && typeof s.id === 
 const localTitle = (local) => (typeof local.title === 'string' && clean(local.title))
   || titleFromFilename(local.fileName);
 
-/**
- * The Track for a file from listLocalTracks.
- * @param {LocalTrack} local
- * @returns {Track}
- * @throws {TypeError} without a file name and an absolute path
- */
+/** Track for a LocalTrack. Throws TypeError without a file name and an absolute path. */
 export function fileTrack(local) {
   if (!isLocal(local)) throw new TypeError('fileTrack needs a { fileName, path } entry with an absolute path');
   return {
@@ -340,12 +293,7 @@ export function fileTrack(local) {
   };
 }
 
-/**
- * The Track for a radio preset; its homepage (https only) becomes the embed link.
- * @param {Station} station
- * @returns {Track}
- * @throws {TypeError} without an id and an http(s) url
- */
+/** Track for a Station, linking the embed to its https homepage. Throws TypeError without an id and http(s) url. */
 export function stationTrack(station) {
   if (!isStation(station)) throw new TypeError('stationTrack needs a station with an id and an http(s) url');
   const page = httpUrl(station.homepage);
@@ -358,11 +306,8 @@ export function stationTrack(station) {
 }
 
 /**
- * The Track for an http(s) stream link. The title is host + path (decoded, at most 80 characters): never the query
- * string or a user:password, which may hold secrets.
- * @param {string|URL} url
- * @returns {Track}
- * @throws {TypeError} unless it is an http(s) URL
+ * Track for an http(s) link, given as a string or URL (TypeError otherwise). The title is host + path, decoded and
+ * cut to 80 characters, never the query string or user:password, which can hold secrets.
  */
 export function urlTrack(url) {
   const parsed = httpUrl(url instanceof URL ? url.href : url);
@@ -371,7 +316,7 @@ export function urlTrack(url) {
   let pathname = parsed.pathname;
   try {
     pathname = decodeURIComponent(pathname);
-  } catch { /* stray % sign: show it as it is */ }
+  } catch { /* a stray %: keep the raw path */ }
   const title = truncate(clean(`${parsed.host}${pathname === '/' ? '' : pathname}`), LABEL_MAX);
   return {
     kind: 'stream', live: true, title, artist: null, input: parsed.href, source: 'url', duration: null,
@@ -379,14 +324,13 @@ export function urlTrack(url) {
   };
 }
 
-/** One pair of surrounding <> or quotes off ('<https://…>' is how people stop a link preview). */
+/** Strips one pair of surrounding <> or quotes; people wrap a link in <> to stop its preview. */
 function unwrap(text) {
   const t = text.trim();
   const close = t.length >= 2 ? PAIRS.get(t[0]) : undefined;
   return close !== undefined && t.endsWith(close) ? t.slice(1, -1).trim() : t;
 }
 
-/** The music service a page link belongs to (YouTube …), or null. */
 function serviceOf(hostname) {
   const host = hostname.toLowerCase().replace(/\.$/, '');
   return SERVICES.find(([, domains]) => domains.some((d) => host === d || host.endsWith(`.${d}`)))?.[0] ?? null;
@@ -404,7 +348,7 @@ function normalizeName(text) {
   return norm;
 }
 
-// What a search runs over: files and stations with their normalized names (`keys` are what fuzzy matching scores).
+// Search items: files and stations with their normalized names; `keys` are what fuzzy matching scores.
 function fileItem(local, index) {
   const title = localTitle(local);
   const norm = normalizeName(title);
@@ -420,7 +364,7 @@ function stationItem(station) {
 }
 const trackOf = (item) => (item.kind === 'file' ? fileTrack(item.local) : stationTrack(item.station));
 
-/** Up to five items as candidates. Files are picked by number; two with the same title show their file names. */
+/** Files are offered by track number; two with the same title are labelled by file name. */
 function candidates(items) {
   const shown = items.slice(0, MAX_CANDIDATES);
   const titles = shown.map((i) => i.title.toLowerCase());
@@ -445,8 +389,8 @@ function ambiguous(text, items) {
 }
 
 /**
- * Edit distance (insert, delete, substitute) if it is at most `max`, else max + 1. Only cells with |i - j| <= max can
- * be on such a path, so only that band is computed.
+ * Levenshtein distance if it is at most `max`, else max + 1. Only cells with |i - j| <= max can lie on such a path,
+ * so only that band is computed.
  */
 function distance(a, b, max) {
   const over = max + 1;
@@ -468,8 +412,8 @@ function distance(a, b, max) {
 }
 
 /**
- * Near misses for "did you mean": items with a run of words within a typo or two of the query ('groovesald',
- * 'grove salad' → groovesalad), closest first. Only suggested, never picked.
+ * "Did you mean" items, closest first: those with a run of words within a typo or two of the query ('groovesald' and
+ * 'grove salad' both find groovesalad). Only ever suggested, never picked.
  */
 function suggest(q, items) {
   const max = q.length < 4 ? 0 : q.length < 8 ? 1 : 2;
@@ -513,7 +457,7 @@ function score(q, tokens, text) {
 /** Step 8: the single best-scoring item, ambiguous on a tie, not_found (with near misses) when nothing scores. */
 function fuzzy(text, q, items, notFound) {
   if (q.length > SEARCH_MAX) return fail('not_found', `${notFound} ${LIST_HINT}`);
-  const tokens = [...new Set(q.split(' '))]; // 'a a a a …' costs what 'a' does
+  const tokens = [...new Set(q.split(' '))]; // 'a a a a' costs no more than 'a'
   let best = 0;
   let top = [];
   for (const item of items) {
@@ -537,7 +481,7 @@ function sameStation(q, items) {
   return items.filter((s) => s.compact.includes(compact));
 }
 
-/** 'radio:<id>' / 'station:<id>': only stations, by id, then name, then fuzzily. */
+/** 'radio:<id>' or 'station:<id>': stations only, by id, then name, then fuzzily. */
 function resolveStation(rest, stations) {
   if (stations.length === 0) return fail('not_found', 'There are no radio stations on this bot.');
   const items = stations.map(stationItem);
@@ -583,24 +527,21 @@ function resolveIndex(text, all, files) {
 }
 
 /**
- * Turns what someone typed after /play into a Track. Pure and synchronous: it only reads the lists it is given.
- * In order:
- *  1. trim and take off one pair of surrounding <> or quotes; nothing left → 'empty'
- *  2. 'radio:<id>' / 'station:<id>' → only stations (id, then name, then fuzzy)
- *  3. a link → an http(s) stream if links are allowed ('urls_disabled' if not); any other link → 'bad_url', and
- *     so are YouTube/Spotify/… pages, which aren't audio
- *  4. a station id ('fip'), any case
- *  5. a file name ('song.mp3', any case), else a title equal after normalize() ('beyonce halo'); a bare number skips
- *     the title check, so '7' is always track #7 even when there's a 7.mp3
- *  6. '3' or '#3' → the 3rd file ('bad_index' saying how many there are)
- *  7. a station name, or an id without its spaces ('groove salad')
- *  8. fuzzy over file titles and names, station ids and names: equal 100 > starts with 80 > every word of the query
- *     starts a word 60 > contains 40; one best → 'fuzzy', a tie → 'ambiguous', nothing → 'not_found' (with near
- *     misses as candidates when there are any). A search over 200 characters (normalized) isn't fuzzy-matched
+ * Resolves what someone typed after /play; the first step that matches wins. Pure and synchronous.
+ *  1. trim and unwrap one pair of <> or quotes; nothing left: 'empty'
+ *  2. 'radio:<id>' or 'station:<id>': stations only (id, then name, then fuzzy)
+ *  3. a link: an http(s) stream if links are allowed, else 'urls_disabled'; other links, music-service pages and
+ *     private addresses: 'bad_url'
+ *  4. a station id, any case
+ *  5. a file name (any case), else a title equal after normalize(); a bare number skips the title check, so '7' is
+ *     always track #7 even when there is a 7.mp3
+ *  6. '3' or '#3': that track number, else 'bad_index'
+ *  7. a station name, or an id typed with spaces ('groove salad')
+ *  8. fuzzy over file titles and names, station ids and names: one best is 'fuzzy', a tie 'ambiguous', nothing
+ *     'not_found' (near misses become candidates)
  * Files only ever come from `localTracks`: the query is never turned into a path.
- * @param {unknown} query
  * @param {{ localTracks?: LocalTrack[], stations?: Station[], allowUrls?: boolean }} [lists]
- * @returns {Resolution} every Track is a new object
+ * @returns {Resolution} with a new Track object every time
  */
 export function resolveQuery(query, { localTracks = [], stations = [], allowUrls = true } = {}) {
   const text = unwrap(typeof query === 'string' ? query : Number.isFinite(query) ? String(query) : '');
@@ -644,7 +585,6 @@ export function resolveQuery(query, { localTracks = [], stations = [], allowUrls
   return fuzzy(text, q, [...files, ...items], notFound);
 }
 
-/** A friendly warning for a music folder that can't be listed. */
 function musicDirWarning(dir, err) {
   if (err?.code === 'ENOENT') {
     return `Music folder ${dir} doesn't exist: create it and put audio files in it (or set MUSIC_DIR)`;
@@ -654,7 +594,6 @@ function musicDirWarning(dir, err) {
   return `Can't read the music folder ${dir}: ${err?.message ?? err}`;
 }
 
-/** Tidies what a probe returned: a duration must be finite and > 0, tags non-empty single-line text. */
 function probeInfo(raw) {
   const text = (v) => (typeof v === 'string' ? clean(v) || null : null);
   const duration = raw?.duration;
@@ -665,7 +604,7 @@ function probeInfo(raw) {
   };
 }
 
-/** A copy of a file track with what the probe found. A title tag replaces the file-name title, with its artist. */
+/** A copy with what the probe found; a title tag replaces the file-name title and brings its artist (or none). */
 function withInfo(track, { duration, title, artist }) {
   const out = { ...track, duration: duration ?? track.duration ?? null };
   if (title) return { ...out, title, artist: artist ?? null };
@@ -675,8 +614,8 @@ function withInfo(track, { duration, title, artist }) {
 }
 
 /**
- * The library one bot uses: stations loaded once by init(), the music folder listed on demand (cached for `cacheMs`,
- * so files dropped in show up without a restart), and ffprobe lookups cached per file version.
+ * The library one bot uses. Stations load once, in init(); the music folder is listed on demand and cached for
+ * `cacheMs`, so new files show up without a restart; ffprobe results are cached per file version.
  */
 export class TrackLibrary {
   #musicDir;
@@ -685,26 +624,22 @@ export class TrackLibrary {
   #probe;
   #cacheMs;
   #now;
-  /** @type {Station[]} */
   #stations = [];
-  /** @type {{ at: number, tracks: LocalTrack[], error: Error|null }|null} */
   #listing = null;
-  /** @type {Promise<{ tracks: LocalTrack[], error: Error|null }>|null} */
   #reading = null;
   #generation = 0;
-  /** @type {Map<string, { stamp: string, info: Promise<object|null> }>} path → last probe (insertion order = LRU) */
+  // file path -> its latest probe, least recently used first
   #probes = new Map();
 
   /**
    * @param {object} [opts]
-   * @param {string|null} [opts.musicDir] folder of audio files (null: no local tracks)
-   * @param {string|null} [opts.stationsFile] JSON file of radio presets (null: no stations)
+   * @param {string|null} [opts.musicDir] folder of audio files; null: no local tracks
+   * @param {string|null} [opts.stationsFile] JSON file of radio presets; null: no stations
    * @param {boolean} [opts.allowUrls] whether /play takes http(s) stream links
    * @param {string} [opts.ffprobePath] for the default probe
    * @param {(file: string) => Promise<{ duration: number|null, title: string|null, artist: string|null }>} [opts.probe]
-   *   defaults to probeFile from ./ffmpeg.js with ffprobePath; tests pass a fake
    * @param {number} [opts.cacheMs] how long a folder listing is reused
-   * @param {() => number} [opts.now] clock in ms, injectable for tests
+   * @param {() => number} [opts.now] clock in ms
    */
   constructor({ musicDir = null, stationsFile = null, allowUrls = true, ffprobePath = 'ffprobe',
     probe = (file) => probeFile(file, { ffprobePath }), cacheMs = 3000, now = Date.now } = {}) {
@@ -719,16 +654,15 @@ export class TrackLibrary {
     this.#now = now;
   }
 
-  /** The music folder (absolute), or null. */
+  /** Absolute, or null. */
   get musicDir() { return this.#musicDir; }
-  /** Whether resolve() accepts http(s) links. */
   get allowUrls() { return this.#allowUrls; }
-  /** The radio presets from the last init(), as a copy ([] before init). */
+  /** A copy of the presets from the last init(); [] before it. */
   get stations() { return [...this.#stations]; }
 
   /**
-   * (Re)loads the stations file and checks the music folder. Never throws.
-   * @returns {Promise<string[]>} warnings for the log: bad station entries, a missing file or folder
+   * (Re)loads the stations and checks the music folder. Never throws.
+   * @returns {Promise<string[]>} warnings for the log
    */
   async init() {
     const { stations, warnings } = await loadStations(this.#stationsFile);
@@ -739,18 +673,14 @@ export class TrackLibrary {
     return warnings;
   }
 
-  /** Forgets the cached folder listing, so the next call reads the folder again. */
+  /** Forgets the cached folder listing (not the stations or probe results). */
   invalidate() {
     this.#generation++;
     this.#listing = null;
     this.#reading = null;
   }
 
-  /**
-   * The audio files in the music folder (see listLocalTracks), from a listing at most `cacheMs` old. Calls at the
-   * same time share one read. Never throws.
-   * @returns {Promise<LocalTrack[]>} a new array each call
-   */
+  /** The folder's tracks from a listing at most `cacheMs` old, as a new array. Never throws. */
   async localTracks() {
     return [...(await this.#list()).tracks];
   }
@@ -760,6 +690,7 @@ export class TrackLibrary {
     const age = now - (this.#listing?.at ?? NaN);
     // age < 0: the clock went back, so don't trust the listing to be recent
     if (this.#listing && age >= 0 && age < this.#cacheMs) return Promise.resolve(this.#listing);
+    // Concurrent calls share one read. A read that invalidate() overtook still answers its callers but isn't cached.
     if (!this.#reading) {
       const generation = this.#generation;
       const reading = readMusicDir(this.#musicDir)
@@ -774,22 +705,16 @@ export class TrackLibrary {
     return this.#reading;
   }
 
-  /**
-   * resolveQuery against the current folder listing and stations. Never throws.
-   * @param {string} query
-   * @returns {Promise<Resolution>}
-   */
+  /** resolveQuery against the current folder listing and stations. Never throws. */
   async resolve(query) {
     const { tracks } = await this.#list();
     return resolveQuery(query, { localTracks: tracks, stations: this.#stations, allowUrls: this.#allowUrls });
   }
 
   /**
-   * Adds what ffprobe knows to a file track: a copy with `duration` and, when the file has a title tag, that title
-   * and its artist. Probed once per file version (path + modification time + size); a probe that throws is asked
-   * again next time. Streams (and anything that can't be probed) come back as they are. Never throws.
-   * @param {Track} track
-   * @returns {Promise<Track>}
+   * A copy of a file track with ffprobe's duration and, if the file has a title tag, that title and its artist.
+   * Probes once per file version (path, mtime, size); a failed probe is retried next time. Streams and anything that
+   * can't be probed come back unchanged. Never throws.
    */
   async enrich(track) {
     try {
@@ -807,14 +732,14 @@ export class TrackLibrary {
 
   #probeOnce(file, stamp) {
     const cached = this.#probes.get(file);
-    this.#probes.delete(file); // re-inserted below: the map stays in least-recently-used order
+    this.#probes.delete(file); // re-inserted below, which keeps the map in least-recently-used order
     if (cached?.stamp === stamp) {
       this.#probes.set(file, cached);
       return cached.info;
     }
     const entry = { stamp, info: null };
     entry.info = (async () => this.#probe(file))().then(probeInfo).catch(() => {
-      if (this.#probes.get(file) === entry) this.#probes.delete(file); // a crash isn't an answer: ask again next time
+      if (this.#probes.get(file) === entry) this.#probes.delete(file); // don't cache a failure: ask again next time
       return null;
     });
     this.#probes.set(file, entry);
