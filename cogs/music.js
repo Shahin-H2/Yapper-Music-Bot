@@ -41,7 +41,7 @@ const JOIN_NOTICE_MS = 2500;
 const JOIN_GAP_MS = 20_000;
 const FFMPEG_RECHECK_MS = 30_000;
 const LEAVE_STEP_MS = 3000;     // per step of leaving voice; a shutdown must fit bot.js's 8 s watchdog
-const UNLOAD_MS = 4000;
+const UNLOAD_MS = 4000;         // UNLOAD_MS + FLUSH_MS must stay well inside bot.js's 8 s shutdown watchdog
 const FLUSH_MS = 1500;
 
 const DM_TEXT = '🚫 This only works in a server.';
