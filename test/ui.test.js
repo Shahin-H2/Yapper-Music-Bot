@@ -50,7 +50,7 @@ function snapshot(extra = {}) {
   if (!('next' in extra)) s.next = s.upcoming[0] ?? null;
   return s;
 }
-/** Track 1 … Track n, a minute each. */
+/** Track 1 to Track n, a minute each. */
 const numbered = (n) => Array.from({ length: n }, (_, i) => fileTrack(`Track ${i + 1}`, { duration: 60 }));
 
 /** Seeded PRNG (mulberry32): the "random" inputs are the same on every run. */
@@ -104,7 +104,7 @@ function liveStars(s) {
 const embedTexts = (e) => [e.title, e.description, ...(e.fields ?? []).flatMap((f) => [f.name, f.value]),
   e.footer?.text, e.author?.name].filter((t) => t !== undefined);
 
-/** Checks an embed against every platform limit, and that it is clean JSON with nothing leaking; → its JSON. */
+/** Checks an embed against every platform limit, and that it is clean JSON with nothing leaking; returns its JSON. */
 function checkEmbed(embed) {
   assert.ok(embed instanceof Embed, 'builders return yapper.js Embeds');
   const e = JSON.parse(JSON.stringify(embed));
@@ -133,7 +133,7 @@ function checkEmbed(embed) {
   return e;
 }
 
-/** Checks rows against the button limits (custom ids unique in the message); → the buttons' JSON, row by row. */
+/** Checks rows against the button limits (custom ids unique in the message); returns the buttons' JSON by row. */
 function checkRows(rows) {
   assert.ok(Array.isArray(rows) && rows.length <= LIMITS.rows, 'at most 5 rows');
   const ids = [];
@@ -181,7 +181,7 @@ describe('formatDuration', () => {
 });
 
 describe('progressBar', () => {
-  it('draws the knob where the position is (the spec example)', () => {
+  it('draws the knob where the position is (the README example)', () => {
     assert.equal(progressBar(30, 100), '▬▬▬▬🔘▬▬▬▬▬▬▬▬▬');
     assert.equal(progressBar(0, 100), `🔘${'▬'.repeat(13)}`);
     assert.equal(progressBar(100, 100), `${'▬'.repeat(13)}🔘`);
@@ -217,7 +217,7 @@ describe('truncate', () => {
     assert.equal(truncate(long), long, 'no max: no limit');
   });
 
-  it("cuts to at most max characters, ending in '…' (never after a space)", () => {
+  it('cuts to at most max characters, ending in an ellipsis (never after a space)', () => {
     assert.equal(truncate('hello world', 8), 'hello w…');
     assert.equal(truncate('hello world', 7), 'hello…');
     assert.equal(truncate('hello world', 6), 'hello…');
@@ -488,7 +488,7 @@ describe('nowPlayingEmbed', () => {
     for (const d of [e.description, bare.description]) assert.doesNotMatch(d, /[🔘▬]|\d:\d\d/u);
   });
 
-  it('degrades nicely when a file has no known length', () => {
+  it("shows the position and 'length unknown' for a file with no known length", () => {
     for (const duration of [null, undefined, 0, NaN, Infinity]) {
       const e = checkEmbed(nowPlayingEmbed(snapshot({ current: fileTrack('Song A', { duration }) })));
       assert.equal(e.description, '**Song A**\n`1:23` · length unknown', String(duration));
@@ -536,7 +536,7 @@ describe('nowPlayingEmbed', () => {
     }
   });
 
-  it("mentions the requester when the id looks like one, else shows '—'", () => {
+  it('mentions the requester when the id looks like one, else shows a dash', () => {
     const cases = [['u1', '<@u1>'], ['0b7c1f2e-9a4d-4c55-8e21-77aa0c3d9f10', '<@0b7c1f2e-9a4d-4c55-8e21-77aa0c3d9f10>'],
       [12345, '<@12345>'], [null, '—'], [undefined, '—'], ['', '—'], ['a b', '—'], ['<@everyone>', '—'],
       ['@everyone', '—'], ['x'.repeat(65), '—'], [-1, '—'], [1.5, '—']];
@@ -546,7 +546,7 @@ describe('nowPlayingEmbed', () => {
     }
   });
 
-  it('shows the next track (falling back to the first waiting one) or —', () => {
+  it('shows the next track (falling back to the first waiting one) or a dash', () => {
     const upNext = (extra) => checkEmbed(nowPlayingEmbed(snapshot(extra))).fields[3].value;
     assert.equal(upNext({ next: null }), '—');
     assert.equal(upNext({ next: undefined }), 'Song B · `3:00`');
@@ -565,7 +565,7 @@ describe('nowPlayingEmbed', () => {
     assert.equal(checkEmbed(nowPlayingEmbed(snapshot({ loop: 'queue' }))).fields[2].value, 'Queue');
   });
 
-  it('keeps the footer plain text: no channel → just the count; pings defused, markdown left alone', () => {
+  it('keeps the footer plain text: only the count without a channel; pings defused, markdown left alone', () => {
     assert.equal(checkEmbed(nowPlayingEmbed(snapshot({ channelName: null }))).footer.text, '2 in queue');
     assert.equal(checkEmbed(nowPlayingEmbed(snapshot({ channelName: '**chill** @everyone' }))).footer.text,
       `🔊 **chill** @${ZWSP}everyone · 2 in queue`);
@@ -646,7 +646,7 @@ describe('endedEmbed', () => {
 });
 
 describe('queueEmbed', () => {
-  /** The numbers of the '**N.** …' lines of an embed's description. */
+  /** The numbers of the '**N.**' lines in an embed's description. */
   const lineNumbers = (e) => e.description.split('\n').filter((l) => /^\*\*\d+\.\*\* /.test(l))
     .map((l) => parseInt(l.slice(2), 10));
 
@@ -850,7 +850,7 @@ describe('tracksEmbed', () => {
     assert.match(checkEmbed(tracksEmbed({ extensions: [] })).description, /Put audio files in/);
   });
 
-  it('lists the stations as `id` — name', () => {
+  it('lists each station as its `id` and name', () => {
     const e = checkEmbed(tracksEmbed({ stations: [...stations, { name: 'No id' }, { id: 'noname' }, null] }));
     assert.deepEqual(e.fields, [{
       name: '📻 Radio stations', inline: false,
@@ -874,7 +874,7 @@ describe('tracksEmbed', () => {
   });
 
   it('keeps room for the summary line even when whole lines nearly fill the field', () => {
-    // 101-character lines: ten of them take 1019 of the 1024 characters, leaving no room for '… and 30 more'.
+    // 101-character lines: ten of them take 1019 of the 1024 characters, leaving no room for the "and 30 more" line.
     const exact = Array.from({ length: 40 }, (_, i) => ({
       id: `station-${String(i).padStart(10, '0')}`, name: 'n'.repeat(78),
     }));
@@ -908,7 +908,7 @@ describe('helpEmbed', () => {
     ['remove', 'Remove a track from the queue'], ['clear', 'Clear the queue'], ['help', 'Show this list'],
   ].map(([name, description]) => ({ name, description }));
 
-  it('lists every command as `/name` — description, in order', () => {
+  it('lists every command as `/name` and its description, in order', () => {
     const e = checkEmbed(helpEmbed(commands));
     assert.equal(e.title, '🎧 Commands');
     const shown = e.description.split('\n');
