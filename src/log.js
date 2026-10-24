@@ -1,12 +1,7 @@
 /**
- * A tiny leveled logger, one line per call:
- *
- *   const log = createLogger('player', { level: 'debug' });
- *   log.info('now playing', track.title);   // 2026-10-24T01:02:03.456Z INFO  [player] now playing Song
- *   log.child('123').warn('alone');         // 2026-10-24T01:02:03.457Z WARN  [player:123] alone
- *
- * Loggers without their own level follow the global one: LOG_LEVEL (read once, at import), changed by setLogLevel().
- * Errors print their stack only at debug level, otherwise just the message. The sink is injectable for tests.
+ * Leveled logger that writes one line per call: `<ISO time> <LEVEL> [scope] <message>`.
+ * Loggers created without a level follow the global one (LOG_LEVEL at import, then setLogLevel()).
+ * Errors print their stack only at debug level.
  */
 import { inspect, types } from 'node:util';
 
@@ -18,15 +13,11 @@ import { inspect, types } from 'node:util';
  *   child: (subscope: string) => Logger, readonly level: LogLevel }} Logger
  */
 
-/** Every level, most chatty first. */
+// Most verbose first: a level's index is its rank.
 export const LOG_LEVELS = Object.freeze(['debug', 'info', 'warn', 'error']);
 const RANK = new Map(LOG_LEVELS.map((level, i) => [level, i]));
 
-/**
- * 'DEBUG' / ' info ' → the level; anything else → null.
- * @param {unknown} value
- * @returns {LogLevel|null}
- */
+/** Ignores case and surrounding whitespace. @returns {LogLevel|null} null for anything that isn't a level */
 export function parseLogLevel(value) {
   const level = typeof value === 'string' ? value.trim().toLowerCase() : '';
   return RANK.has(level) ? /** @type {LogLevel} */ (level) : null;
