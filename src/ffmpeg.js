@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * ffmpeg as the decoder (a local file or an http(s) stream in, 48 kHz stereo s16le PCM out on stdout), plus the
  * startup check and ffprobe lookups. Inputs are locked down with protocol whitelists: a file opens as `file:<path>`
