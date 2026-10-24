@@ -150,7 +150,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 const byFileName = (a, b) => collator.compare(a.fileName, b.fileName)
   || (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0);
 
-/** A folder that can't be read gives no tracks plus the error, which init() turns into a warning. */
+// A folder that can't be read gives no tracks plus the error, which init() turns into a warning.
 async function readMusicDir(musicDir) {
   if (typeof musicDir !== 'string' || !musicDir || musicDir.includes('\0')) return { tracks: [], error: null };
   const dir = path.resolve(musicDir);
@@ -181,8 +181,7 @@ async function readMusicDir(musicDir) {
 }
 
 /**
- * Audio files directly in `musicDir` (no sub-folders or hidden files), in natural order: the numbering /tracks
- * shows. `path` is absolute, `ext` lowercase. A missing or unreadable folder gives [].
+ * Audio files directly in `musicDir`, in natural order: the numbering /tracks shows. [] if it can't be read.
  * @returns {Promise<LocalTrack[]>}
  */
 export async function listLocalTracks(musicDir) {
@@ -195,8 +194,8 @@ export async function listLocalTracks(musicDir) {
 
 /**
  * Validates parsed stations JSON: an array of { id, name, url, description?, homepage? }, or { stations: [...] }.
- * Bad entries are skipped and bad optional fields dropped, each with a warning; never throws. Ids are lowercased and
- * the first entry with a given id wins.
+ * Bad entries are skipped and bad optional fields dropped, each with a warning; never throws. Ids are lowercased,
+ * the first entry with a given id wins, and a homepage must be https.
  * @returns {{ stations: Station[], warnings: string[] }} the stations are frozen
  */
 export function parseStations(data) {
@@ -250,10 +249,7 @@ export function parseStations(data) {
   return { stations, warnings };
 }
 
-/**
- * Reads a stations file through parseStations. Never throws: a missing or broken file gives no stations and a
- * warning; no file configured (null or '') gives no stations, silently.
- */
+/** parseStations on a file; never throws. A missing or broken file gives a warning, null or '' gives nothing. */
 export async function loadStations(file) {
   if (file === undefined || file === null || file === '') return { stations: [], warnings: [] };
   if (typeof file !== 'string') {
@@ -305,10 +301,7 @@ export function stationTrack(station) {
   };
 }
 
-/**
- * Track for an http(s) link, given as a string or URL (TypeError otherwise). The title is host + path, decoded and
- * cut to 80 characters, never the query string or user:password, which can hold secrets.
- */
+/** Track titled by host + path only (the query and user:password can hold secrets). Throws TypeError unless http(s). */
 export function urlTrack(url) {
   const parsed = httpUrl(url instanceof URL ? url.href : url);
   if (!parsed) throw new TypeError('urlTrack needs an http(s) URL');
@@ -324,7 +317,7 @@ export function urlTrack(url) {
   };
 }
 
-/** Strips one pair of surrounding <> or quotes; people wrap a link in <> to stop its preview. */
+// Strips one pair of surrounding <> or quotes; people wrap a link in <> to stop its preview.
 function unwrap(text) {
   const t = text.trim();
   const close = t.length >= 2 ? PAIRS.get(t[0]) : undefined;
@@ -364,7 +357,7 @@ function stationItem(station) {
 }
 const trackOf = (item) => (item.kind === 'file' ? fileTrack(item.local) : stationTrack(item.station));
 
-/** Files are offered by track number; two with the same title are labelled by file name. */
+// Files are offered by track number; two with the same title are labelled by file name.
 function candidates(items) {
   const shown = items.slice(0, MAX_CANDIDATES);
   const titles = shown.map((i) => i.title.toLowerCase());
@@ -388,10 +381,8 @@ function ambiguous(text, items) {
   return fail('ambiguous', `${what} match ${quote(text)}. ${ask}`, items);
 }
 
-/**
- * Levenshtein distance if it is at most `max`, else max + 1. Only cells with |i - j| <= max can lie on such a path,
- * so only that band is computed.
- */
+// Levenshtein distance if it is at most `max`, else max + 1. Only cells with |i - j| <= max can lie on such a path,
+// so only that band is computed.
 function distance(a, b, max) {
   const over = max + 1;
   if (Math.abs(a.length - b.length) > max) return over;
@@ -411,10 +402,8 @@ function distance(a, b, max) {
   return prev[b.length];
 }
 
-/**
- * "Did you mean" items, closest first: those with a run of words within a typo or two of the query ('groovesald' and
- * 'grove salad' both find groovesalad). Only ever suggested, never picked.
- */
+// "Did you mean" items, closest first: those with a run of words within a typo or two of the query ('groovesald' and
+// 'grove salad' both find groovesalad). Only ever suggested, never picked.
 function suggest(q, items) {
   const max = q.length < 4 ? 0 : q.length < 8 ? 1 : 2;
   if (max === 0) return [];
@@ -441,7 +430,7 @@ function suggest(q, items) {
   return close.sort((a, b) => a.best - b.best).map((c) => c.item); // stable: library order within a distance
 }
 
-/** How well `text` matches the query: equal 100, starts with it 80, every query word starts a word 60, contains 40. */
+// How well `text` matches the query: equal 100, starts with it 80, every query word starts a word 60, contains 40.
 function score(q, tokens, text) {
   if (!text) return 0;
   if (text === q) return 100;
@@ -454,7 +443,7 @@ function score(q, tokens, text) {
   return text.includes(q) ? 40 : 0;
 }
 
-/** Step 8: the single best-scoring item, ambiguous on a tie, not_found (with near misses) when nothing scores. */
+// Step 8: the single best-scoring item, ambiguous on a tie, not_found (with near misses) when nothing scores.
 function fuzzy(text, q, items, notFound) {
   if (q.length > SEARCH_MAX) return fail('not_found', `${notFound} ${LIST_HINT}`);
   const tokens = [...new Set(q.split(' '))]; // 'a a a a' costs no more than 'a'
@@ -475,13 +464,13 @@ function fuzzy(text, q, items, notFound) {
   return fail('not_found', `${notFound} ${close.length ? 'Did you mean one of these?' : LIST_HINT}`, close);
 }
 
-/** Station name or id equality, spaces ignored: 'kexp 90.3 seattle', 'groove salad' and 'fip-jazz' all hit. */
+// Station name or id equality, spaces ignored: 'kexp 90.3 seattle', 'groove salad' and 'fip-jazz' all hit.
 function sameStation(q, items) {
   const compact = q.replaceAll(' ', '');
   return items.filter((s) => s.compact.includes(compact));
 }
 
-/** 'radio:<id>' or 'station:<id>': stations only, by id, then name, then fuzzily. */
+// 'radio:<id>' or 'station:<id>': stations only, by id, then name, then fuzzily.
 function resolveStation(rest, stations) {
   if (stations.length === 0) return fail('not_found', 'There are no radio stations on this bot.');
   const items = stations.map(stationItem);
@@ -498,7 +487,7 @@ function resolveStation(rest, stations) {
   return fuzzy(rest, q, items, notFound);
 }
 
-/** Step 3: an http(s) link becomes a stream (when allowed); any other link is refused. */
+// Step 3: an http(s) link becomes a stream (when allowed); any other link is refused.
 function resolveLink(text, allowUrls) {
   const url = httpUrl(text);
   const service = url ? serviceOf(url.hostname) : /^spotify:/i.test(text) ? 'Spotify' : null;
@@ -515,7 +504,7 @@ function resolveLink(text, allowUrls) {
   return found(urlTrack(url), 'url');
 }
 
-/** Step 6: '/play 3' or '/play #3' is the third file in the listing. */
+// Step 6: '/play 3' or '/play #3' is the third file in the listing.
 function resolveIndex(text, all, files) {
   const digits = text.replace(/^#/, '').replace(/^0+(?=\d)/, '');
   const hit = files.find((f) => f.index === Number(digits));
@@ -530,16 +519,12 @@ function resolveIndex(text, all, files) {
  * Resolves what someone typed after /play; the first step that matches wins. Pure and synchronous.
  *  1. trim and unwrap one pair of <> or quotes; nothing left: 'empty'
  *  2. 'radio:<id>' or 'station:<id>': stations only (id, then name, then fuzzy)
- *  3. a link: an http(s) stream if links are allowed, else 'urls_disabled'; other links, music-service pages and
- *     private addresses: 'bad_url'
+ *  3. a link: an http(s) stream if allowed, else 'urls_disabled'; other links, service pages, private hosts: 'bad_url'
  *  4. a station id, any case
- *  5. a file name (any case), else a title equal after normalize(); a bare number skips the title check, so '7' is
- *     always track #7 even when there is a 7.mp3
+ *  5. a file name (any case), else a normalized title; numbers skip titles, so '7' is track #7 even if 7.mp3 exists
  *  6. '3' or '#3': that track number, else 'bad_index'
  *  7. a station name, or an id typed with spaces ('groove salad')
- *  8. fuzzy over file titles and names, station ids and names: one best is 'fuzzy', a tie 'ambiguous', nothing
- *     'not_found' (near misses become candidates)
- * Files only ever come from `localTracks`: the query is never turned into a path.
+ *  8. fuzzy over titles, file names and stations (see score): 'fuzzy', 'ambiguous' on a tie, else 'not_found'
  * @param {{ localTracks?: LocalTrack[], stations?: Station[], allowUrls?: boolean }} [lists]
  * @returns {Resolution} with a new Track object every time
  */
@@ -604,7 +589,7 @@ function probeInfo(raw) {
   };
 }
 
-/** A copy with what the probe found; a title tag replaces the file-name title and brings its artist (or none). */
+// A copy with what the probe found; a title tag replaces the file-name title and brings its artist (or none).
 function withInfo(track, { duration, title, artist }) {
   const out = { ...track, duration: duration ?? track.duration ?? null };
   if (title) return { ...out, title, artist: artist ?? null };
@@ -654,16 +639,12 @@ export class TrackLibrary {
     this.#now = now;
   }
 
-  /** Absolute, or null. */
   get musicDir() { return this.#musicDir; }
   get allowUrls() { return this.#allowUrls; }
   /** A copy of the presets from the last init(); [] before it. */
   get stations() { return [...this.#stations]; }
 
-  /**
-   * (Re)loads the stations and checks the music folder. Never throws.
-   * @returns {Promise<string[]>} warnings for the log
-   */
+  /** (Re)loads the stations and checks the music folder; resolves warnings for the log. Never throws. */
   async init() {
     const { stations, warnings } = await loadStations(this.#stationsFile);
     this.#stations = stations;
