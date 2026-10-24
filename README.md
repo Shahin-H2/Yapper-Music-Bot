@@ -24,7 +24,7 @@ SomaFM · Groove Salad · 🔴 LIVE
 [ 🔁 Loop: Off ]  [ 🔉 Vol - ]  [ 🔊 Vol + ]
 ```
 
-That is the card for a local file with a radio station up next. Radio shows 🔴 LIVE and the station's description instead of a progress bar. The card updates itself when someone pauses, changes the volume or loop mode, or edits the queue (the progress bar moves with those updates). When a new card is posted, the old one loses its buttons.
+That is the card for a local file with a radio station up next. Radio shows 🔴 LIVE and the station's description instead of a progress bar. The card updates itself when someone pauses, changes the volume or loop mode, or edits the queue (the progress bar only moves when the card is updated). When a new card is posted, the old one loses its buttons.
 
 | Button | What it does |
 | --- | --- |
@@ -114,7 +114,7 @@ Running your own copy needs the author's written permission, because the code is
 
 <details><summary><b>Configuration (.env)</b></summary>
 
-Only `YAPPER_BOT_TOKEN` is required. Variables already set in your shell win over `.env`. A value the bot can't use falls back to its default with a warning in the log, relative paths start from the project folder, and switches take `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`.
+Only `YAPPER_BOT_TOKEN` is required. Variables already set in your shell win over `.env` (except on Node 20.6.x). A value the bot can't use falls back to its default with a warning in the log, relative paths start from the project folder, and switches take `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
@@ -172,12 +172,12 @@ Plain Node.js (ES modules with JSDoc types, no build step) on the single-file ya
 ```
 
 - **Frames that own their memory.** rtc-node hands native code a frame's whole underlying buffer from offset 0, so a view into Node's pooled `Buffer` memory would play whatever bytes sit next to it. `PcmFramer` therefore copies every 10 ms frame (480 samples × 2 channels × 2 bytes) into a fresh `ArrayBuffer`, and puts samples split across chunks back together.
-- **Click-free volume.** Volume is a linear gain (200% doubles the amplitude, about +6 dB). `applyGain` ramps from the old gain to the new one across the next 10 ms frame and clamps to 16 bits, so a change never clicks.
+- **Click-free volume.** Volume is a linear gain (200% doubles the amplitude, about +6 dB). `applyGain` ramps from the old gain to the new one across the next 10 ms frame and clamps to 16 bits, so a change doesn't click.
 - **A 200 ms LiveKit buffer.** LiveKit's `AudioSource` queues a full second by default, so pause, skip and volume would lag by a second. `src/voice.js` hands yapper.js a copy of the rtc module whose `AudioSource` uses `AUDIO_QUEUE_MS`, and skip and stop also drop what is already queued. LiveKit aborts the whole process on a queue that isn't a multiple of 10 ms, so the config falls back to 200 for any other value.
 - **Pausing files and radio.** A paused file is simply not read any further: the pipe fills up, ffmpeg blocks, and resume continues on the exact sample. A paused station keeps being read with its frames dropped, so the connection doesn't stall and resume comes back live.
 - **Fast handlers for a one-event-at-a-time SDK.** yapper.js waits for each handler before it takes the next event, and a button click must be answered within 3 s. Handlers wait for at most a voice lookup and a file probe, in parallel and time-boxed, and never for their own replies. Joining voice and playing run in a detached loop per server, and their results are posted in order.
 - **Rate-limit budgets.** Yapin’ gives each bot 10 voice joins and leaves and 60 voice lookups a minute, shared by all its servers. Lookups are cached for 5 s and shared by concurrent callers, someone found outside voice is remembered for 15 s, and joins are paced to one per 20 s per server and per person, so nobody can use up everyone's budget.
-- **Streams that drop.** ffmpeg reconnects by itself and gives up after 15 s without data; the player then retries up to 3 times (after 1, 2 and 4 s). Errors a retry can't fix, such as an HTTP 404 or a web page instead of audio, fail at once.
+- **Streams that drop.** ffmpeg reconnects by itself and gives up after 15 s without data; the player then retries up to 3 times (after 1, 2 and 4 s). A stream that fails before playing anything, in a way no retry fixes (an HTTP 404, a web page instead of audio), fails at once.
 - **Security boundaries.** Whatever follows `/play` is only compared with the music folder's listing and never turned into a path, so `../../.env` matches nothing. ffmpeg runs without a shell and with protocol whitelists (`file` for files, `http,https,tcp,tls,crypto` for streams), and links to localhost or to private, loopback and link-local addresses are refused. File names, tags and error text are escaped before they reach chat, so they can't format a message or ping `@everyone`. The token stays in `.env`, which git ignores, and config warnings blank out anything that looks like one.
 
 ### Project structure
