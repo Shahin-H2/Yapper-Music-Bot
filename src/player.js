@@ -20,7 +20,7 @@ import { LOOP_MODES, Queue, nextLoopMode, parseLoopMode } from './queue.js';
  * @typedef {object} VoiceLink what connect() resolves with: src/voice.js's VoiceConnection, or a test fake
  * @property {string} channelId
  * @property {{ captureFrame: (frame: any) => Promise<void>, clearQueue?: () => void,
- *   waitForPlayout?: () => Promise<void>, queuedDuration?: number }} source LiveKit's AudioSource (queuedDuration in ms)
+ *   waitForPlayout?: () => Promise<void>, queuedDuration?: number }} source queuedDuration is in ms
  * @property {(pcm: Int16Array) => any} createFrame
  * @property {() => Promise<void>} leave
  * @property {() => number|null} [participantCount]
@@ -28,8 +28,7 @@ import { LOOP_MODES, Queue, nextLoopMode, parseLoopMode } from './queue.js';
  * @property {(event: string, fn: (...args: any[]) => void) => any} [off]
  */
 /**
- * Plain data for src/ui.js, with copied tracks. `position` is in seconds; `next` is what plays when the current
- * track ends on its own.
+ * Plain data for src/ui.js, tracks copied. `position` is in seconds; `next` plays when the current track ends.
  * @typedef {{ serverId: string, channelId: string|null, channelName: string|null, textChannelId: string|null,
  *   state: string, current: Track|null, position: number, paused: boolean, volume: number, loop: LoopModeValue,
  *   upcoming: Track[], next: Track|null }} PlayerSnapshot
@@ -44,10 +43,10 @@ export const STOP_REASONS = Object.freeze(['stopped', 'idle', 'alone', 'disconne
 
 /** In ms; each one can be overridden through the `timings` option. */
 export const PLAYER_TIMINGS = Object.freeze({
-  presenceDebounceMs: 1500, // voice events come in bursts
+  presenceDebounceMs: 1500,
   countTimeoutMs: 5000,     // a slower countListeners() counts as "unknown"
-  playoutTimeoutMs: 2000,   // cap on letting the buffered tail play out once the queue runs dry
-  exitTimeoutMs: 5000,      // ffmpeg closed its output: time to exit before it's killed
+  playoutTimeoutMs: 2000,
+  exitTimeoutMs: 5000,     // ffmpeg closed its output: time to exit before it's killed
   retryBaseMs: 1000,        // a dropped live stream is retried after 1 s, 2 s, 4 s, ...
   goodStreamMs: 30000,      // the retry count starts over once a stream has played this long
   waitForTimeoutMs: 15000,  // the server's previous player gets this long to leave voice
@@ -57,8 +56,8 @@ export const PLAYER_TIMINGS = Object.freeze({
 });
 
 /**
- * Thrown by play() or emitted with 'connectError'; the message is fit for chat. On DESTROYED, obtain a fresh player.
- * `channelId` is the channel it's busy in (BUSY_ELSEWHERE) or couldn't join in time (CONNECT_TIMEOUT).
+ * Thrown by play() or emitted with 'connectError'; the message is fit for chat. `channelId` is where the player is
+ * busy (BUSY_ELSEWHERE) or failed to join in time (CONNECT_TIMEOUT).
  */
 export class PlayerError extends Error {
   /** @param {'DESTROYED'|'BUSY_ELSEWHERE'|'CONNECT_TIMEOUT'} code */
@@ -70,8 +69,8 @@ export class PlayerError extends Error {
   }
 }
 
-const KICKED = Symbol('kicked');       // #park gave up: its until() came true
-const TIMED_OUT = Symbol('timed out'); // #park gave up: out of time
+const KICKED = Symbol('kicked');
+const TIMED_OUT = Symbol('timed out');
 
 const isId = (v) => v !== undefined && v !== null && v !== '';
 const sameId = (a, b) => isId(a) && isId(b) && String(a) === String(b);
