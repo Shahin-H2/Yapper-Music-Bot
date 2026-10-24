@@ -1,13 +1,27 @@
 {
-  "type": "module",
-  "name": "yapper-bot",
+  "name": "dls-bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "starter.js",
+  "private": true,
+  "description": "DLS_bot: a Yapin’ music bot that plays local files and internet radio in voice channels",
+  "type": "module",
+  "main": "bot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node --env-file=.env bot.js",
+    "dev": "node --env-file=.env --watch bot.js",
+    "test": "node --test"
   },
-  "keywords": [],
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "keywords": [
+    "yapin",
+    "yapper",
+    "bot",
+    "music",
+    "radio",
+    "livekit",
+    "ffmpeg"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
