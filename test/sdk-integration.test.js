@@ -49,7 +49,7 @@ function wav(seconds = 0.2, rate = 8000) {
   return Buffer.concat([head, data]);
 }
 
-/** The bot API routes DLS_bot uses, on 127.0.0.1. Requests are recorded (except the event polls). */
+/** The bot API routes Music Bot uses, on 127.0.0.1. Requests are recorded (except the event polls). */
 class FakeYapin {
   /** @type {{ method: string, path: string, body: any, auth: string|undefined }[]} */
   requests = [];
@@ -79,7 +79,7 @@ class FakeYapin {
     await new Promise((resolve) => this.#server.close(resolve));
   }
 
-  /** An event for the bot's next poll (a waiting poll gets it right away). → its data */
+  /** Queues an event for the bot's next poll (a waiting poll gets it right away); returns its data. */
   push(type, data) {
     this.#events.push({ id: ++this.#lastId, type, data });
     for (const answer of [...this.#polls]) answer();
@@ -110,7 +110,7 @@ class FakeYapin {
     if (req.method === 'GET' && route === '/events') return this.#poll(url, send);
     this.requests.push({ method: req.method, path: route, body, auth: req.headers.authorization });
     let m;
-    if (req.method === 'GET' && route === '/me') return send(200, { id: 'bot-1', username: 'DLS_bot' });
+    if (req.method === 'GET' && route === '/me') return send(200, { id: 'bot-1', username: 'Music_Bot' });
     if (req.method === 'PUT' && route === '/commands') return send(200, { ok: true });
     if (req.method === 'POST' && (m = /^\/channels\/([^/]+)\/messages$/.exec(route))) {
       return send(200, { message: { id: `bot-msg-${++this.#ids}`, channel_id: m[1], ...body } });
@@ -158,7 +158,7 @@ describe('the real yapper.js Bot running cogs/, against a fake Yapin’ API', { 
   let running;
   let seq = 0;
 
-  /** `/name args` typed in the text channel by user-1. → the message event's data */
+  /** `/name args` typed in the text channel by user-1; returns the message event's data. */
   const type = (name, args = '', { command = true } = {}) => api.push('message', {
     id: `user-msg-${++seq}`, channel_id: TEXT, server_id: SERVER, author_id: 'user-1',
     content: `/${name}${args ? ` ${args}` : ''}`, ...(command ? { command: name, args } : {}),
@@ -167,7 +167,7 @@ describe('the real yapper.js Bot running cogs/, against a fake Yapin’ API', { 
     && r.body?.reply_to === msg.id, `the reply to ${msg.content}`);
 
   before(async () => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
     const musicDir = path.join(tmp, 'music');
     fs.mkdirSync(musicDir);
     fs.writeFileSync(path.join(musicDir, 'test_tone.wav'), wav());
@@ -248,7 +248,7 @@ describe('the real yapper.js Bot running cogs/, against a fake Yapin’ API', { 
     assert.ok(!api.requests.some((r) => r.path.endsWith('/voice/join')), 'no join was tried');
   });
 
-  it("/play answers Yapin’'s refusal to let it join voice with a friendly error",
+  it('/play answers a voice join that Yapin’ refuses with a friendly error',
     { skip: !POSIX && 'the stand-in ffmpeg needs a POSIX shell' }, async () => {
       api.voice.set(SERVER, [{ channel_id: 'vc-1', user_ids: ['user-1'] }]);
       // They joined voice since the last test (which remembers them as outside it): Yapin’ says so with an event.
@@ -285,7 +285,7 @@ describe('bot.js', () => {
     // An empty token wins over any .env (and NODE_OPTIONS can't sneak --env-file in): this never reaches Yapin’.
     const env = { ...process.env, YAPPER_BOT_TOKEN: '' };
     delete env.NODE_OPTIONS;
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
     try {
       const run = spawnSync(process.execPath, [path.join(ROOT, 'bot.js')],
         { cwd, env, encoding: 'utf8', timeout: 10000 });
