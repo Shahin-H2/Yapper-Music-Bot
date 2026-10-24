@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * Entry point (`npm start` runs `node --env-file=.env bot.js`): loads the settings and the cogs in ./cogs, then runs
  * the bot until SIGINT or SIGTERM. A second signal, or a shutdown that takes over 8 s, exits at once.
