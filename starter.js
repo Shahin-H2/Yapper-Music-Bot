@@ -1,14 +1,12 @@
 // Your first Yapin’ bot. Needs Node 18+ (https://nodejs.org) and yapper.js next to this file.
 //   1. Save yapper.js and package.json from https://www.yapin.gg/sdk/ into the same folder
 //      (package.json just says these files are ES modules; Node 18-20 needs it).
-//   2. Put your token below (Settings → Developer → Create).
-//   3. Add the bot to a server you manage (same place), then run:  node starter.js
+//   2. Put your token in .env as YAPPER_BOT_TOKEN (Settings → Developer → Create). Never hardcode it here.
+//   3. Add the bot to a server you manage (same place), then run:  node --env-file=.env starter.js
+// The real bot is bot.js (npm start); this file is the SDK's original example.
 import { Bot } from "./yapper.js";
 
-const bot = new Bot(
-  process.env.YAPPER_BOT_TOKEN ||
-    "yb_64eb8683.iHBbqmEulC6_BuvxYJL3HpGpNgH5avluYGYOVMyl",
-);
+const bot = new Bot(process.env.YAPPER_BOT_TOKEN);
 
 // /ping → pong. Shows up in the "/" menu for everyone in the server.
 bot.command("ping", "Is the bot alive?", (msg) => msg.reply("pong 🏓"));
