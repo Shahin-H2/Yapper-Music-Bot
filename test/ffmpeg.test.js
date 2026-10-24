@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
