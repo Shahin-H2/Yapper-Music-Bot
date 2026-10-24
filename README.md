@@ -2,7 +2,7 @@
 
 ![Node.js >= 20.6](https://img.shields.io/badge/node-%3E%3D%2020.6-339933?logo=nodedotjs&logoColor=white) [![License: Proprietary / All Rights Reserved](https://img.shields.io/badge/license-Proprietary%20%2F%20All%20Rights%20Reserved-red)](LICENSE)
 
-Music Bot plays your own audio files and live internet radio in [Yapin’](https://www.yapin.gg) voice channels. Every server gets its own queue, and an interactive Now Playing card lets people pause, skip, loop and change the volume with a click.
+Music Bot plays your own audio files and live internet radio in [Yapin’](https://www.yapin.gg) voice channels. Every server gets its own queue, and the Now Playing card has buttons to pause, skip, loop and change the volume.
 
 ## How to use it
 
@@ -24,7 +24,7 @@ SomaFM · Groove Salad · 🔴 LIVE
 [ 🔁 Loop: Off ]  [ 🔉 Vol - ]  [ 🔊 Vol + ]
 ```
 
-That is the card for a local file with a radio station up next. Radio shows 🔴 LIVE and the station's description instead of a progress bar. The card updates itself when someone pauses, changes the volume or loop mode, or edits the queue (the progress bar only moves when the card is updated). When a new card is posted, the old one loses its buttons.
+This is a local file with a radio station up next. A station shows 🔴 LIVE and its description instead of a progress bar. The card updates when someone pauses, changes the volume or loop mode, or edits the queue; the progress bar only moves on those updates. A new card takes the buttons off the old one.
 
 | Button | What it does |
 | --- | --- |
@@ -46,7 +46,7 @@ That is the card for a local file with a radio station up next. Radio shows 🔴
 | `/resume` | Resumes the music. |
 | `/skip` | Skips the current track. |
 | `/stop` | Stops the music, clears the queue and leaves the voice channel. |
-| `/volume [number, +10 or -10]` | Shows the volume, or sets it from 1 to 200%. |
+| `/volume [number, +10 or -10]` | Shows the volume, or sets it from 1 to 200%. `+10` and `-10` step it up or down. |
 | `/loop [off\|track\|queue]` | Repeats nothing, the current track or the whole queue. Without an argument, it moves to the next mode. |
 | `/shuffle` | Shuffles the tracks that are up next. |
 | `/remove <number>` | Takes a track out of the queue, by the number `/queue` shows. |
@@ -106,7 +106,7 @@ Twelve stations come with the bot. Play one by its id (`/play groovesalad`) or b
    cp .env.example .env            # Windows cmd: copy .env.example .env
    ```
 
-   In Yapin’, open Settings > Developer and create a bot (this one is called Music_Bot). Put its token, which starts with `yb_`, in `.env` as `YAPPER_BOT_TOKEN`, then add the bot to your server from the same page.
+   In Yapin’, open Settings > Developer and create a bot, for example `Music_Bot`. Put its token, which starts with `yb_`, in `.env` as `YAPPER_BOT_TOKEN`, then add the bot to your server from the same page.
 
 3. **Add music and start it.** Put audio files (`.mp3`, `.wav`, `.flac`, `.ogg`, `.opus` or `.m4a`) in `./music`, run `npm start`, join a voice channel and type `/play 1`.
 
@@ -136,7 +136,7 @@ Only `YAPPER_BOT_TOKEN` is required. Variables already set in your shell win ove
 | `AUDIO_BITRATE` | `128000` | The Opus bitrate of the bot's voice track, 32000 to 256000 bits/s. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
 
-**Your own stations.** `config/stations.json` is a JSON array of objects. Each needs an `id` (what people type after `/play`: 1 to 32 characters from `a-z`, `0-9`, `-` and `_`, starting with a letter or digit and holding at least one letter, so it can't clash with a track number), a `name` and a `url` (the direct http(s) audio stream, not the station's web page). `description` (shown on the card next to 🔴 LIVE) and `homepage` (an https link for the card's title) are optional. Stations load when the bot starts, so restart it after an edit; a broken entry is skipped with a warning.
+**Your own stations.** `config/stations.json` is a JSON array of objects. Each needs an `id` (what people type after `/play`: 1 to 32 of `a-z`, `0-9`, `-` and `_`, starting with a letter or digit and with at least one letter, so it can't clash with a track number), a `name` and a `url` (the direct http(s) audio stream, not the station's web page). `description` (shown on the card next to 🔴 LIVE) and `homepage` (an https link for the card's title) are optional. Stations load when the bot starts, so restart it after an edit; a broken entry is skipped with a warning.
 
 </details>
 
@@ -166,15 +166,15 @@ Plain Node.js (ES modules with JSDoc types, no build step) on the single-file ya
  ./music/song.flac  or  https://host/stream.mp3
    ▼  ffmpeg        decodes to s16le PCM, 48 kHz stereo                 src/ffmpeg.js
    ▼  PcmFramer     10 ms frames of 1920 bytes, each in its own buffer  src/audio.js
-   ▼  applyGain     volume ramped across the frame, clamped to 16 bits  src/audio.js
+   ▼  applyGain     volume ramped across the frame, clipped to 16 bits  src/audio.js
    ▼  AudioSource   LiveKit, with a 200 ms queue (AUDIO_QUEUE_MS)       src/voice.js
    ▼  end-to-end encrypted Yapin’ voice call                            yapper.js
 ```
 
 - **Frames that own their memory.** rtc-node hands native code a frame's whole underlying buffer from offset 0, so a view into Node's pooled `Buffer` memory would play whatever bytes sit next to it. `PcmFramer` therefore copies every 10 ms frame (480 samples × 2 channels × 2 bytes) into a fresh `ArrayBuffer`, and puts samples split across chunks back together.
-- **Click-free volume.** Volume is a linear gain (200% doubles the amplitude, about +6 dB). `applyGain` ramps from the old gain to the new one across the next 10 ms frame and clamps to 16 bits, so a change doesn't click.
+- **Click-free volume.** Volume is a linear gain (200% doubles the amplitude, about +6 dB). `applyGain` ramps from the old gain to the new one across the next 10 ms frame instead of jumping, and clips the result to 16 bits.
 - **A 200 ms LiveKit buffer.** LiveKit's `AudioSource` queues a full second by default, so pause, skip and volume would lag by a second. `src/voice.js` hands yapper.js a copy of the rtc module whose `AudioSource` uses `AUDIO_QUEUE_MS`, and skip and stop also drop what is already queued. LiveKit aborts the whole process on a queue that isn't a multiple of 10 ms, so the config falls back to 200 for any other value.
-- **Pausing files and radio.** A paused file is simply not read any further: the pipe fills up, ffmpeg blocks, and resume continues on the exact sample. A paused station keeps being read with its frames dropped, so the connection doesn't stall and resume comes back live.
+- **Pausing files and radio.** A paused file isn't read any further: the pipe fills up, ffmpeg blocks, and resume continues on the exact sample. A paused station keeps being read with its frames dropped, so the connection doesn't stall and resume comes back live.
 - **Fast handlers for a one-event-at-a-time SDK.** yapper.js waits for each handler before it takes the next event, and a button click must be answered within 3 s. Handlers wait for at most a voice lookup and a file probe, in parallel and time-boxed, and never for their own replies. Joining voice and playing run in a detached loop per server, and their results are posted in order.
 - **Rate-limit budgets.** Yapin’ gives each bot 10 voice joins and leaves and 60 voice lookups a minute, shared by all its servers. Lookups are cached for 5 s and shared by concurrent callers, someone found outside voice is remembered for 15 s, and joins are paced to one per 20 s per server and per person, so nobody can use up everyone's budget.
 - **Streams that drop.** ffmpeg reconnects by itself and gives up after 15 s without data; the player then retries up to 3 times (after 1, 2 and 4 s). A stream that fails before playing anything, in a way no retry fixes (an HTTP 404, a web page instead of audio), fails at once.
