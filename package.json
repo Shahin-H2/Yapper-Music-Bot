@@ -1,8 +1,8 @@
 {
-  "name": "dls-bot",
+  "name": "music-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "DLS_bot: a Yapin’ music bot that plays local files and internet radio in voice channels",
+  "description": "Music bot for Yapin’ voice channels: local audio files and internet radio, with a Now Playing card and per-server queues",
   "type": "module",
   "main": "bot.js",
   "scripts": {
@@ -22,8 +22,8 @@
     "livekit",
     "ffmpeg"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Shahin Hassanyan",
+  "license": "UNLICENSED",
   "dependencies": {
     "@livekit/rtc-node": "^1.2.1"
   }
