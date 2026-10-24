@@ -282,7 +282,7 @@ describe('the real yapper.js Bot running cogs/, against a fake Yapin’ API', { 
 
 describe('bot.js', () => {
   it('exits with 1 and says what to do when YAPPER_BOT_TOKEN is missing, before any network call', () => {
-    // An empty token wins over any .env (and NODE_OPTIONS can't sneak --env-file in): this never reaches Yapin’.
+    // An empty token wins over any .env, and without NODE_OPTIONS nothing adds --env-file: this never reaches Yapin’.
     const env = { ...process.env, YAPPER_BOT_TOKEN: '' };
     delete env.NODE_OPTIONS;
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
