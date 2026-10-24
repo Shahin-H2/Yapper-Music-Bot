@@ -92,7 +92,8 @@ Twelve stations come with the bot. Play one by its id (`/play groovesalad`) or b
    ```bash
    brew install ffmpeg node                        # macOS
    sudo apt install ffmpeg nodejs npm              # Debian / Ubuntu
-   winget install Gyan.FFmpeg OpenJS.NodeJS.LTS    # Windows, then open a new terminal
+   winget install Gyan.FFmpeg                      # Windows (then the next line,
+   winget install OpenJS.NodeJS.LTS                #   and open a new terminal)
    ```
 
    Check `node -v` afterwards. Some Linux releases ship an older Node; if yours is below 20.6, get a current one from [nodejs.org](https://nodejs.org). The bot runs on macOS, Linux (x64 or arm64, glibc) and Windows x64, the platforms `@livekit/rtc-node` ships binaries for.
