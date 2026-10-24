@@ -6,7 +6,7 @@ import {
 
 /** A fake track. The title doubles as a readable id, but the checks below also compare object identity. */
 const track = (title) => ({ kind: 'file', live: false, title, input: `/music/${title}.mp3`, source: 'local' });
-/** Distinct tracks named after the letters of `names`: tracks('ABC') → { A, B, C }. */
+/** Distinct tracks named after the letters of `names`: tracks('ABC') gives { A, B, C }. */
 const tracks = (names) => Object.fromEntries([...names].map((n) => [n, track(n)]));
 const titles = (list) => list.map((t) => t.title).join('');
 
@@ -55,7 +55,7 @@ describe('LoopMode, LOOP_MODES, ADVANCE_REASONS', () => {
 });
 
 describe('nextLoopMode', () => {
-  it('cycles off → track → queue → off', () => {
+  it('cycles off, track, queue, then off again', () => {
     assert.equal(nextLoopMode('off'), 'track');
     assert.equal(nextLoopMode('track'), 'queue');
     assert.equal(nextLoopMode('queue'), 'off');
@@ -200,8 +200,8 @@ describe('Queue#upcoming, length and isEmpty', () => {
     list.push(C);
     list.reverse();
     list.length = 0;
-    assertSameTracks(q.upcoming, [A, B]); // the queue didn't change…
-    assert.equal(q.upcoming[0], A); // …and the copy holds the same track objects
+    assertSameTracks(q.upcoming, [A, B]); // the queue didn't change,
+    assert.equal(q.upcoming[0], A); // and the copy holds the same track objects
   });
 
   it('length counts only waiting tracks; isEmpty means nothing playing and nothing waiting', () => {
@@ -237,8 +237,8 @@ describe('Queue#loop', () => {
   });
 });
 
-describe('Queue#advance: every reason × loop × current × upcoming', () => {
-  // reason, loop, current, upcoming → returned (= new current), upcoming after. '-' = no track.
+describe('Queue#advance: every combination of reason, loop, current and upcoming', () => {
+  // [reason, loop, current, upcoming, returned (the new current), upcoming after]; '-' is no track.
   const cases = [
     ['ended', 'off', '-', '', '-', ''],
     ['ended', 'off', '-', 'BC', 'B', 'C'],
@@ -287,7 +287,7 @@ describe('Queue#advance: every reason × loop × current × upcoming', () => {
   });
 
   for (const [reason, loop, cur, up, want, wantUp] of cases) {
-    it(`${reason}, loop ${loop}, current ${cur}, upcoming [${up}] → ${want}, upcoming [${wantUp}]`, () => {
+    it(`${reason}, loop ${loop}, current ${cur}, upcoming [${up}]: returns ${want}, upcoming [${wantUp}]`, () => {
       const T = tracks('ABC');
       const q = build({ current: cur === '-' ? null : T[cur], upcoming: [...up].map((k) => T[k]), loop });
       const got = q.advance(reason);
@@ -356,7 +356,7 @@ describe('Queue#advance: behaviour over time', () => {
       assert.equal(q.length, 0);
     }
     assert.equal(q.advance('skipped'), A);
-    assert.equal(q.advance('failed'), null); // …until it fails
+    assert.equal(q.advance('failed'), null); // until it fails
     assert.equal(q.isEmpty, true);
   });
 
@@ -409,10 +409,10 @@ describe('Queue#advance: behaviour over time', () => {
   it('hands back the very objects that were added, even equal-looking ones', () => {
     const x1 = track('X');
     const x2 = track('X');
-    assert.deepEqual(x1, x2); // they look the same…
+    assert.deepEqual(x1, x2); // they look the same,
     const q = build({ upcoming: [x1, x2], loop: 'queue' });
     assert.equal(q.peek(), x1);
-    assert.equal(q.advance(), x1); // …but the queue keeps them apart
+    assert.equal(q.advance(), x1); // but the queue keeps them apart
     assert.equal(q.peek(), x2);
     assert.equal(q.advance(), x2);
     assert.equal(q.upcoming[0], x1); // sent round as the same object
@@ -444,7 +444,7 @@ describe('Queue#peek', () => {
     assert.equal(states, 24);
   });
 
-  it('matches the spec cases', () => {
+  it('picks the next track in each loop mode, with and without a current track', () => {
     const { A, B } = tracks('AB');
     assert.equal(build({ current: A, upcoming: [B], loop: 'track' }).peek(), A);
     assert.equal(build({ upcoming: [B], loop: 'track' }).peek(), B); // nothing to repeat yet
@@ -545,7 +545,7 @@ describe('Queue#shuffle', () => {
     assertSameTracks(again.upcoming, after);
   });
 
-  it('is a real Fisher–Yates: random() = 0 rotates left, random() ≈ 1 keeps the order', () => {
+  it('is a real Fisher-Yates: random() = 0 rotates left, random() near 1 keeps the order', () => {
     const { A, B, C, D } = tracks('ABCD');
     const q = build({ upcoming: [A, B, C, D] });
     q.shuffle(() => 0);
@@ -560,7 +560,7 @@ describe('Queue#shuffle', () => {
       for (let i = 2; i <= n; i++) total *= i;
       const orders = new Set();
       for (let k = 0; k < total; k++) {
-        // Fisher–Yates picks j in [0, i] for i = n-1 … 1; k numbers one choice sequence (mixed radix).
+        // Fisher-Yates picks j in [0, i] for i = n-1 down to 1; k numbers one choice sequence (mixed radix).
         const values = [];
         for (let i = n - 1, rest = k; i > 0; rest = Math.floor(rest / (i + 1)), i--) {
           values.push(((rest % (i + 1)) + 0.5) / (i + 1));
