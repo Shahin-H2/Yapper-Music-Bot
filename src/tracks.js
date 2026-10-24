@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * What /play can play: music-folder files, radio presets (config/stations.json) and, if allowed, http(s) streams.
  * A query is only compared with the folder listing, never turned into a path, so '../../.env' can't reach a file
