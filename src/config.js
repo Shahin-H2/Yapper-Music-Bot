@@ -107,7 +107,7 @@ export function loadConfig(env = process.env) {
     warnings.push("YAPPER_BOT_TOKEN doesn't start with yb_, so it isn't a bot token "
       + '(make one in Yapin’ → Settings → Developer)');
   }
-  // Object literals evaluate in order, so warnings come out in field order and are complete before the freeze.
+  // Properties evaluate in order, so every field's warning is in before the freeze: keep `warnings` last.
   return Object.freeze({
     token,
     musicDir: filePath('MUSIC_DIR', path.join(PROJECT_ROOT, 'music')),
@@ -123,7 +123,7 @@ export function loadConfig(env = process.env) {
     requireSameVoice: bool('REQUIRE_SAME_VOICE', true),
     embedColor: color('EMBED_COLOR', '#ff4fd8'),
     statusText: read('BOT_STATUS')?.replace(/\s+/g, ' ') || 'Listening to /play',
-    // LiveKit panics on a queue that isn't a multiple of 10 ms, which aborts the whole process on the first /play.
+    // LiveKit's native code panics on a queue that isn't a multiple of 10 ms, killing the process on the first /play.
     audioQueueMs: int('AUDIO_QUEUE_MS', 50, 1000, 200, { step: 10 }),
     bitrate: int('AUDIO_BITRATE', 32000, 256000, 128000),
     logLevel: level('LOG_LEVEL', 'info'),
