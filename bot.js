@@ -91,7 +91,7 @@ async function main() {
   process.on('SIGINT', () => onSignal(bot, 'SIGINT'));
   process.on('SIGTERM', () => onSignal(bot, 'SIGTERM'));
   bot.start().then(
-    // start() only returns by itself when Yapin’ stopped taking the token.
+    // Unless we stopped it, start() only resolves once Yapin’ rejects the token.
     () => { if (!stopping) void shutdown(bot, 'the bot stopped', 1); },
     (err) => {
       const hint = err?.status === 401 ? ' (check YAPPER_BOT_TOKEN in .env)' : '';
