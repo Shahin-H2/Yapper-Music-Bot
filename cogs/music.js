@@ -70,12 +70,12 @@ const sameId = (a, b) => isId(a) && isId(b) && String(a) === String(b);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const mentionOf = (userId) => (isId(userId) ? `<@${userId}>` : 'someone');
 const timeoutError = (ms) => Object.assign(new Error(`no answer within ${ms} ms`), { name: 'TimeoutError' });
-/** The page in '/queue 2'; anything else is page 1 (ui.js clamps it to the pages there are). */
+// Not clamped here: ui.js knows how many pages there are.
 const pageOf = (text) => (/^\d{1,6}$/.test(String(text ?? '')) ? Number(text) : 1);
-/** An error's message for chat: escaped, one line, without its final full stop (the sentence around it has one). */
+// Escaped for chat, minus the final period: callers put it inside their own sentence.
 const reasonOf = (err) => sanitize(err?.message || String(err || 'something went wrong'), 200).replace(/[.!]+$/, '');
 
-/** 30000 → '30 s', 90000 → '1 min 30 s'. */
+/** '30 s', '1 min 30 s' */
 function inWords(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
   const min = Math.floor(total / 60);
@@ -83,7 +83,7 @@ function inWords(ms) {
   return min ? `${min} min${s ? ` ${s} s` : ''}` : `${s} s`;
 }
 
-/** The music folder as chat may name it: relative to the project, never the host's absolute path. */
+/** The music folder as chat shows it: relative to the project, never the host's absolute path. */
 function folderLabel(dir) {
   if (typeof dir !== 'string' || !dir) return './music';
   const rel = path.relative(PROJECT_ROOT, dir);
@@ -91,16 +91,12 @@ function folderLabel(dir) {
   return rel.startsWith('..') || path.isAbsolute(rel) ? path.basename(dir) : `./${rel.split(path.sep).join('/')}`;
 }
 
-/** What to say when a voice lookup for /play failed. */
 function lookupText(err) {
   if (Number(err?.status) !== 429) return LOOKUP_TEXT;
   const wait = Math.ceil(Number(err.retryAfter));
   return `⏳ Yapin’ is rate-limiting me right now. Try again in ${wait > 0 ? `${wait} s` : 'a moment'}.`;
 }
 
-/**
- * The music cog. yapper.js makes it with `new Music(bot)` when it loads cogs/; tests pass stand-ins as `deps`.
- */
 export class Music extends Cog {
   #config;
   #color;
