@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * One server's playback engine (Player) and the per-server registry (PlayerManager). Public methods return at once;
  * a detached run loop does the slow work: wait for the server's previous player to leave, join voice, then decode,
