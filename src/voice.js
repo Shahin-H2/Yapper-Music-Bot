@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * Voice for Music Bot: joining a channel through yapper.js and @livekit/rtc-node, and knowing who is in voice.
  * connectVoice wraps bot.connectVoice, which leaves a half-failed join connected and gives its AudioSource LiveKit's
