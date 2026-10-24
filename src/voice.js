@@ -82,8 +82,7 @@ export function voiceErrorMessage(err) {
  * newer session out of voice. The promise then rejects with `signal.reason`.
  * @param {{ bot: any, rtc: any, serverId: string, channelId: string, queueMs?: number, bitrate?: number,
  *   logger?: Logger, leaveTimeoutMs?: number, signal?: AbortSignal|null }} opts
- *   rtc: the @livekit/rtc-node module; queueMs: native audio queue length, a multiple of 10; leaveTimeoutMs: bound
- *   on each cleanup step, here and in VoiceConnection#leave
+ *   rtc: the @livekit/rtc-node module; queueMs: native queue length (multiple of 10); leaveTimeoutMs: per cleanup step
  * @returns {Promise<VoiceConnection>}
  */
 export async function connectVoice({
@@ -180,10 +179,7 @@ export class VoiceConnection extends EventEmitter {
   #hangingUp = false;
   #lost = false;
 
-  /**
-   * @param {{ bot: any, rtc: any, call: VoiceCall, serverId: string, channelId: string, logger?: Logger,
-   *   leaveTimeoutMs?: number }} opts call: what bot.connectVoice returned; leaveTimeoutMs bounds each leave() step
-   */
+  /** `call` is the VoiceCall bot.connectVoice returned; leaveTimeoutMs bounds each step of leave(). */
   constructor({
     bot, rtc, call, serverId, channelId, logger, leaveTimeoutMs = LEAVE_TIMEOUT_MS,
   } = /** @type {any} */ ({})) {
@@ -212,10 +208,7 @@ export class VoiceConnection extends EventEmitter {
   /** True once leave() was called or the room dropped us. */
   get closed() { return this.#lost || this.#hangingUp; }
 
-  /**
-   * 10 ms of interleaved 48 kHz stereo s16 (960 samples) as an rtc.AudioFrame. LiveKit reads the frame's whole
-   * ArrayBuffer from offset 0, so a view into a bigger buffer is copied first.
-   */
+  /** LiveKit reads a frame's whole ArrayBuffer from offset 0, so a view into a bigger buffer is copied first. */
   createFrame(pcm) {
     if (!(pcm instanceof Int16Array)) throw new TypeError('createFrame needs an Int16Array');
     if (pcm.length !== FRAME_SAMPLES) throw new RangeError(`a frame is ${FRAME_SAMPLES} samples, got ${pcm.length}`);
@@ -230,10 +223,7 @@ export class VoiceConnection extends EventEmitter {
     return Number.isInteger(size) && size >= 0 ? size : null;
   }
 
-  /**
-   * Hangs up: call.leave() (bounded), close the track, and if call.leave() failed or timed out, ask Yapin’ to take
-   * the bot out of voice. Returns the same promise on every call; it never rejects.
-   */
+  /** Idempotent and never rejects; falls back to bot.leaveVoice when call.leave() fails or times out. */
   leave() {
     if (!this.#leaving) {
       // Set before call.leave(): room.disconnect() reports our own hang-up to our 'disconnected' listener too.
@@ -315,10 +305,8 @@ export class VoiceDirectory {
   #absent = new Map();
 
   /**
-   * @param {any} bot the yapper.js bot (only bot.api is used)
-   * @param {{ ttlMs?: number, absentMs?: number, timeoutMs?: number, now?: () => number }} [opts]
-   *   ttlMs: how long an answer is reused (0 = never); absentMs: how long channelOf remembers someone it found
-   *   outside voice (0 = never); timeoutMs: per request
+   * Only bot.api is used. ttlMs: how long an answer is reused; absentMs: how long channelOf remembers someone it
+   * found outside voice (0 for either: never); timeoutMs: per request.
    */
   constructor(bot, { ttlMs = 5000, absentMs = 15000, timeoutMs = 2500, now = Date.now } = {}) {
     if (typeof bot?.api !== 'function') throw new TypeError('VoiceDirectory needs the yapper.js bot');
@@ -335,8 +323,7 @@ export class VoiceDirectory {
   }
 
   /**
-   * A copy of every voice channel of the server and who is in it. Rejects with the API's error (with `.status`).
-   * @param {{ fresh?: boolean }} [opts] fresh: skip the cache (a request already on its way is still shared)
+   * A copy of every voice channel and who is in it. `fresh` skips the cache but still shares a request in flight.
    * @returns {Promise<VoiceChannelState[]>}
    */
   async snapshot(serverId, { fresh = false } = {}) {
@@ -345,11 +332,9 @@ export class VoiceDirectory {
   }
 
   /**
-   * The voice channel `userId` is in, or null. A cached "not in voice" is checked once more with a fresh lookup
-   * (they may have joined since). A fresh "not in voice" is then reused for absentMs unless the cache shows them in a
-   * channel or invalidate() runs, so repeating /play or clicking a button can't spend the bot's 60 lookups a minute,
-   * which every server shares.
-   * @param {{ fresh?: boolean }} [opts] fresh: skip the cache and that memory
+   * The voice channel `userId` is in, or null. A cached "not in voice" is rechecked once with a fresh lookup; a fresh
+   * one is then trusted for absentMs unless the cache shows them in a channel or invalidate() runs, so repeated /play
+   * or button clicks can't spend the bot's 60 lookups a minute, shared by every server. `fresh` skips both shortcuts.
    */
   async channelOf(serverId, userId, { fresh = false } = {}) {
     if (userId === undefined || userId === null || userId === '') return null;
@@ -368,10 +353,7 @@ export class VoiceDirectory {
     return found;
   }
 
-  /**
-   * Who is in that channel now (always a fresh lookup), minus `excludeIds` (such as the bot) and duplicates.
-   * @param {Iterable<string>|string} [excludeIds]
-   */
+  /** Who is in that channel now (always a fresh lookup), minus `excludeIds` (an id or ids) and duplicates. */
   async othersIn(serverId, channelId, excludeIds = []) {
     const { channels } = await this.#get(keyOf(serverId), true);
     const many = typeof excludeIds !== 'string' && typeof excludeIds?.[Symbol.iterator] === 'function';
@@ -379,15 +361,12 @@ export class VoiceDirectory {
     const channel = channels.find((c) => String(c.channel_id) === String(channelId));
     const others = [];
     for (const id of channel?.user_ids ?? []) {
-      if (!skip.has(String(id))) { skip.add(String(id)); others.push(id); } // also drops duplicates
+      if (!skip.has(String(id))) { skip.add(String(id)); others.push(id); }
     }
     return others;
   }
 
-  /**
-   * Forgets a server's voice state (call on voice_join and voice_leave); a lookup already on its way is neither cached
-   * nor shared afterwards. Without a server id, which voice events may lack, forgets every server.
-   */
+  /** Forgets a server's voice state, or every server's without an id (voice events may lack one). */
   invalidate(serverId) {
     if (serverId === undefined || serverId === null || serverId === '') {
       this.#cache.clear();
@@ -400,7 +379,6 @@ export class VoiceDirectory {
     this.#absent.delete(String(serverId));
   }
 
-  // The server's cached channels while they are fresh, else null.
   #cached(key) {
     const hit = this.#cache.get(key);
     const age = hit ? this.#now() - hit.at : NaN;
