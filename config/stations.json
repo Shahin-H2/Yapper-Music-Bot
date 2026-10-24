@@ -1,0 +1,86 @@
+[
+  {
+    "id": "groovesalad",
+    "name": "SomaFM · Groove Salad",
+    "description": "Ambient beats and grooves",
+    "url": "https://ice2.somafm.com/groovesalad-128-mp3",
+    "homepage": "https://somafm.com/groovesalad/"
+  },
+  {
+    "id": "fluid",
+    "name": "SomaFM · Fluid",
+    "description": "Instrumental hip-hop & lo-fi beats",
+    "url": "https://ice2.somafm.com/fluid-128-mp3",
+    "homepage": "https://somafm.com/fluid/"
+  },
+  {
+    "id": "dronezone",
+    "name": "SomaFM · Drone Zone",
+    "description": "Atmospheric ambient soundscapes",
+    "url": "https://ice2.somafm.com/dronezone-128-mp3",
+    "homepage": "https://somafm.com/dronezone/"
+  },
+  {
+    "id": "defcon",
+    "name": "SomaFM · DEF CON Radio",
+    "description": "Music for hacking",
+    "url": "https://ice2.somafm.com/defcon-128-mp3",
+    "homepage": "https://somafm.com/defcon/"
+  },
+  {
+    "id": "lush",
+    "name": "SomaFM · Lush",
+    "description": "Mellow vocals with an electronic touch",
+    "url": "https://ice2.somafm.com/lush-128-mp3",
+    "homepage": "https://somafm.com/lush/"
+  },
+  {
+    "id": "radioparadise",
+    "name": "Radio Paradise · Main Mix",
+    "description": "Eclectic rock, indie, electronica & world",
+    "url": "https://stream.radioparadise.com/mp3-192",
+    "homepage": "https://radioparadise.com/"
+  },
+  {
+    "id": "mellow",
+    "name": "Radio Paradise · Mellow Mix",
+    "description": "The laid-back side of Radio Paradise",
+    "url": "https://stream.radioparadise.com/mellow-192",
+    "homepage": "https://radioparadise.com/"
+  },
+  {
+    "id": "kexp",
+    "name": "KEXP 90.3 Seattle",
+    "description": "Independent music from Seattle",
+    "url": "https://kexp-mp3-128.streamguys1.com/kexp128.mp3",
+    "homepage": "https://www.kexp.org/"
+  },
+  {
+    "id": "fip",
+    "name": "FIP",
+    "description": "Eclectic sounds from Paris",
+    "url": "https://icecast.radiofrance.fr/fip-midfi.mp3",
+    "homepage": "https://www.radiofrance.fr/fip"
+  },
+  {
+    "id": "fipjazz",
+    "name": "FIP Jazz",
+    "description": "Jazz around the clock from FIP",
+    "url": "https://icecast.radiofrance.fr/fipjazz-midfi.mp3",
+    "homepage": "https://www.radiofrance.fr/fip"
+  },
+  {
+    "id": "npo2",
+    "name": "NPO Radio 2",
+    "description": "Dutch pop & rock classics",
+    "url": "https://icecast.omroep.nl/radio2-bb-mp3",
+    "homepage": "https://www.nporadio2.nl/"
+  },
+  {
+    "id": "3fm",
+    "name": "NPO 3FM",
+    "description": "New pop, rock & alternative from the Netherlands",
+    "url": "https://icecast.omroep.nl/3fm-bb-mp3",
+    "homepage": "https://www.npo3fm.nl/"
+  }
+]

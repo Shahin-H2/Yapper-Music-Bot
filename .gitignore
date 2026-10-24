@@ -1,0 +1,16 @@
+# Secrets: your bot token lives here. Never commit it (.env.example is the template).
+.env
+.env.*
+!.env.example
+
+# Dependencies (reinstall with `npm install`)
+node_modules/
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+*.log
+
+# Your local music (music/*.mp3, .wav, .flac, .ogg, …) stays on your machine; the folder itself is kept.
+music/*
+!music/.gitkeep
