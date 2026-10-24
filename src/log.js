@@ -26,9 +26,9 @@ export function parseLogLevel(value) {
 let globalLevel = parseLogLevel(process.env.LOG_LEVEL) ?? 'info';
 
 /**
- * Set the level of every logger that wasn't created with its own. Throws TypeError on an unknown level.
- * @param {string} level
- * @returns {LogLevel}
+ * Sets the level of every logger created without its own.
+ * @returns {LogLevel} the level as parsed (' WARN ' gives 'warn')
+ * @throws {TypeError} on an unknown level
  */
 export function setLogLevel(level) {
   const parsed = parseLogLevel(level);
@@ -36,10 +36,10 @@ export function setLogLevel(level) {
   return (globalLevel = parsed);
 }
 
-/** The level loggers without their own level use right now. @returns {LogLevel} */
+/** @returns {LogLevel} */
 export function getLogLevel() { return globalLevel; }
 
-/** The default sink: warn → console.warn, error → console.error, debug/info → console.log. @type {LogSink} */
+/** @type {LogSink} */
 export function consoleSink(level, line) {
   if (level === 'error') console.error(line);
   else if (level === 'warn') console.warn(line);
@@ -73,13 +73,11 @@ function stamp(now) {
 }
 
 /**
- * A logger for one part of the bot.
- * @param {string} [scope] shown in brackets, e.g. 'player' → [player]
+ * @param {string} [scope] shown as `[scope]`; a child logs as `[scope:subscope]`
  * @param {{ level?: LogLevel|null, sink?: LogSink, now?: () => number|Date }} [opts]
- *   level: this logger's own minimum level (unknown level → TypeError); left out, it follows the global level.
- *   sink: gets (level, line) for every line that passes the level; defaults to the console.
- *   now: the clock for timestamps (tests pin it).
+ *   level: this logger's own minimum, instead of following the global level; now: the timestamp clock.
  * @returns {Logger}
+ * @throws {TypeError} on an unknown level or a sink that isn't a function
  */
 export function createLogger(scope = 'app', { level = null, sink = consoleSink, now = Date.now } = {}) {
   const own = level === null || level === undefined ? null : parseLogLevel(level);
@@ -93,10 +91,10 @@ export function createLogger(scope = 'app', { level = null, sink = consoleSink, 
     const min = threshold();
     if (RANK.get(lvl) < RANK.get(min)) return;
     const text = args.map((a) => formatArg(a, min === 'debug')).join(' ');
-    // Logging must never take the bot down (a closed stdout, a broken test sink, a bad clock).
+    // Logging must never take the bot down (a closed stdout, a throwing sink, a bad clock).
     try {
       sink(lvl, `${stamp(now)} ${lvl.toUpperCase().padEnd(5)} [${name}]${text ? ` ${text}` : ''}`);
-    } catch { /* the line is lost, the bot keeps going */ }
+    } catch { /* the line is lost */ }
   };
   return {
     debug: (...args) => write('debug', args),
