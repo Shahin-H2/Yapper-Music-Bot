@@ -74,7 +74,7 @@ function fakeRtc(behaviour = {}) {
       Disconnected: 'disconnected', ParticipantConnected: 'participantConnected',
       ParticipantDisconnected: 'participantDisconnected',
     }),
-    // Like a protobuf enum: value → name and name → value.
+    // Like a protobuf enum: maps values to names and names to values.
     DisconnectReason: Object.freeze({
       1: 'CLIENT_INITIATED', CLIENT_INITIATED: 1, 4: 'SERVER_SHUTDOWN', SERVER_SHUTDOWN: 4,
     }),
@@ -356,7 +356,7 @@ describe('connectVoice', () => {
       assert.deepEqual(calls.leave, []);
     });
 
-    it('called off while the room was connecting: torn down, without a VoiceConnection or a server-wide leave',
+    it('while the room is connecting: torn down, with no VoiceConnection and no server-wide leave',
       async () => {
         let release;
         const gate = new Promise((resolve) => { release = resolve; });
@@ -696,7 +696,7 @@ describe('VoiceDirectory', () => {
     assert.equal(bot.calls.length, 2);
   });
 
-  it('channelOf → null after at most one extra lookup', async () => {
+  it('channelOf gives null after at most one extra lookup', async () => {
     const bot = apiBot();
     const dir = new VoiceDirectory(bot, { now: clock() });
     await dir.snapshot('s1');
@@ -707,12 +707,12 @@ describe('VoiceDirectory', () => {
     assert.equal(fresh.calls.length, 1, 'an answer that was just fetched is not fetched again');
   });
 
-  it('channelOf remembers someone it found outside voice, so asking again and again costs no lookups', async () => {
+  it('channelOf remembers someone it found outside voice, so repeated asks cost no lookups', async () => {
     const bot = apiBot();
     const now = clock();
     const dir = new VoiceDirectory(bot, { now });
     assert.equal(await dir.channelOf('s1', 'u9'), null);
-    for (let i = 0; i < 30; i++) assert.equal(await dir.channelOf('s1', 'u9'), null); // spam: /play, a button …
+    for (let i = 0; i < 30; i++) assert.equal(await dir.channelOf('s1', 'u9'), null); // spam: /play, a button, ...
     assert.equal(bot.calls.length, 1, 'one lookup however often they ask (60 a minute for the whole bot)');
     now.t += 14_999; // the cached voice state is stale by now; the memory isn't
     assert.equal(await dir.channelOf('s1', 'u9'), null);
@@ -728,7 +728,7 @@ describe('VoiceDirectory', () => {
     assert.equal(forgetful.calls.length, 2, 'absentMs 0: no memory');
   });
 
-  it('…but a voice event in the server, fresh, or the cache showing them in voice beat that memory', async () => {
+  it('a voice event in the server, fresh, or the cache showing them in voice overrides that memory', async () => {
     let voice = VOICE;
     const bot = apiBot(() => ({ voice }));
     const now = clock();
