@@ -30,7 +30,7 @@ const NEWLINE = String.fromCodePoint(10);
 const TAB = String.fromCodePoint(9);
 const RLO = String.fromCodePoint(0x202e); // right-to-left override
 
-/** The spec's station table: [id, name, url, homepage]. */
+/** The README's station table: [id, name, url, homepage]. */
 const TABLE = [
   ['groovesalad', 'SomaFM · Groove Salad', 'https://ice2.somafm.com/groovesalad-128-mp3',
     'https://somafm.com/groovesalad/'],
@@ -58,7 +58,7 @@ const local = (fileName, dir = MUSIC) => ({
   ext: path.extname(fileName).toLowerCase(),
 });
 const listing = (...names) => names.map((n) => local(n));
-// #1 … #8. '7.mp3' is #3, so '7' (track #7) and '7.mp3' must pick different files.
+// Tracks #1 to #8. '7.mp3' is #3, so '7' (track #7) and '7.mp3' must pick different files.
 const BASE = listing('Beyoncé - Halo.mp3', 'fip.mp3', '7.mp3', 'Halo Theme.flac', 'my_song-remix.ogg', 'Song.mp3',
   'song.flac', 'Track 2.mp3');
 const resolve = (query, lists = {}) => resolveQuery(query, { localTracks: BASE, stations: STATIONS, ...lists });
@@ -186,7 +186,7 @@ describe('titleFromFilename', () => {
 describe('listLocalTracks', () => {
   let dir;
   before(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-'));
     for (const name of ['UPPER.MP3', '.hidden.mp3', '._mac-junk.mp3', 'notes.txt', 'cover.jpg', 'noext',
       'song.mp3.part', 'track10.mp3', 'track2.mp3', 'Track1.wav', 'b.flac', 'c.ogg', 'd.opus', 'e.m4a']) {
       fs.writeFileSync(path.join(dir, name), 'x');
@@ -338,7 +338,7 @@ describe('parseStations', () => {
 
 describe('loadStations', () => {
   let dir;
-  before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-')); });
+  before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-')); });
   after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const write = (name, text) => {
     const file = path.join(dir, name);
@@ -390,7 +390,7 @@ describe('loadStations', () => {
 });
 
 describe('config/stations.json (shipped)', () => {
-  it('parses with zero warnings and holds exactly the specified stations, in order', async () => {
+  it('parses with zero warnings and holds exactly the documented stations, in order', async () => {
     const { stations, warnings } = await loadStations(SHIPPED);
     assert.deepEqual(warnings, []);
     assert.deepEqual(stations.map((s) => [s.id, s.name, s.url, s.homepage]), TABLE);
@@ -487,7 +487,7 @@ describe('resolveQuery', () => {
       for (const q of ['"fip"', '<fip>', '“fip”', "'fip'", '`fip`', '«fip»', '" fip "']) {
         assert.equal(picked(resolve(q), 'station').stationId, 'fip', q);
       }
-      // Only one pair: what's left of <<…>> isn't a link any more.
+      // Only one pair: what's left of <<...>> isn't a link any more.
       assert.equal(resolve('<<https://example.com/live>>').ok, false);
     });
 
@@ -542,7 +542,7 @@ describe('resolveQuery', () => {
       assert.equal(picked(resolve('HTTP://Example.COM:8000/Live'), 'url').input, 'http://example.com:8000/Live');
     });
 
-    it('unwraps <https://…>', () => {
+    it('unwraps a link in angle brackets', () => {
       assert.equal(picked(resolve('<https://example.com/live>'), 'url').input, 'https://example.com/live');
     });
 
@@ -596,7 +596,7 @@ describe('resolveQuery', () => {
         assert.match(refused(resolve(q), 'bad_url').message, new RegExp(`^I can't play ${service} links`), q);
         assert.match(refused(resolve(q, { allowUrls: false }), 'bad_url').message, new RegExp(service), q);
       }
-      // Look-alikes are just other sites.
+      // Look-alikes are ordinary sites.
       for (const q of ['https://notyoutube.com/live', 'https://youtube.com.example.org/live',
         'https://example.com/youtube.com']) {
         assert.equal(picked(resolve(q), 'url').input, q);
@@ -762,9 +762,9 @@ describe('resolveQuery', () => {
     });
 
     it("can't be made slow: a search over 200 characters isn't fuzzy-matched", () => {
-      // Fuzzy work is about query words × library size, on the thread that feeds every server's audio: 2000 words
-      // over 5000 files took ~0.5 s before (LiveKit holds 0.2 s of audio). The fuzzy pass would match every file
-      // here (each word starts "alpha"), so not_found without candidates shows it was skipped.
+      // Fuzzy work grows with query words times library size, on the thread that feeds every server's audio:
+      // 2000 words over 5000 files took ~0.5 s before (LiveKit holds 0.2 s of audio). The fuzzy pass would match
+      // every file here (each word starts "alpha"), so not_found without candidates shows it was skipped.
       const big = Array.from({ length: 5000 }, (_, i) => local(`alpha beta gamma ${i}.mp3`));
       const long = refused(resolveQuery('a '.repeat(2000), { localTracks: big }), 'not_found');
       assert.equal(long.candidates, undefined);
@@ -833,7 +833,7 @@ describe('resolveQuery', () => {
 describe('TrackLibrary', () => {
   let dir;
   let n = 0;
-  before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dls-')); });
+  before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bot-')); });
   after(() => fs.rmSync(dir, { recursive: true, force: true }));
   /** A fresh music folder holding `files`. */
   const folder = (...files) => {
@@ -1082,7 +1082,7 @@ describe('TrackLibrary', () => {
       assert.deepEqual(calls, []);
     });
 
-    it('defaults to ffprobe at ffprobePath: a missing one just means no details', async () => {
+    it('defaults to ffprobe at ffprobePath: a missing one means no details', async () => {
       const lib = new TrackLibrary({ musicDir: folder('Some_Song.mp3'), ffprobePath: path.join(dir, 'no-ffprobe') });
       const track = await trackIn(lib, '1');
       const rich = await lib.enrich(track);
@@ -1093,12 +1093,12 @@ describe('TrackLibrary', () => {
       if (!runs(FFMPEG) || !runs(FFPROBE)) return t.skip('ffmpeg/ffprobe not available');
       const d = folder();
       execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi',
-        '-i', 'sine=frequency=440:duration=1', '-metadata', 'title=Test Tone', '-metadata', 'artist=DLS_bot',
+        '-i', 'sine=frequency=440:duration=1', '-metadata', 'title=Test Tone', '-metadata', 'artist=Music Bot',
         path.join(d, 'tagged_tone.flac')]);
       const lib = new TrackLibrary({ musicDir: d, ffprobePath: FFPROBE });
       const track = await trackIn(lib, 'tagged tone');
       const rich = await lib.enrich(track);
-      assert.deepEqual([rich.title, rich.artist], ['Test Tone', 'DLS_bot']);
+      assert.deepEqual([rich.title, rich.artist], ['Test Tone', 'Music Bot']);
       assert.ok(Math.abs(rich.duration - 1) < 0.05, `duration ${rich.duration}`);
       // The same file through a missing ffprobe: proves ffprobePath is what the default probe runs.
       const blind = new TrackLibrary({ musicDir: d, ffprobePath: path.join(dir, 'no-ffprobe') });
