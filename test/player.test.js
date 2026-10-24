@@ -741,7 +741,7 @@ describe('Player: failures', OPTS, () => {
       [['Radio', 'Server returned 5XX Server Error reply']]);
   });
 
-  it("a link that fails before any audio in a way no retry changes fails at once: a 404, a web page …", async () => {
+  it('a link with a lasting error before any audio (404, web page, blocked protocol) fails at once', async () => {
     const whitelist = "Protocol 'rtmp' not on whitelist 'http,https,tcp,tls,crypto'!";
     const lasting = [
       ['[in#0 @ 0x1] Error opening input: Server returned 404 Not Found', 'Server returned 404 Not Found'],
@@ -760,7 +760,7 @@ describe('Player: failures', OPTS, () => {
     }
   });
 
-  it('…but a stream that has played is retried whatever ends it (a mount is 404 while its source restarts)',
+  it('a stream that already played is retried whatever ends it (a mount is 404 while its source restarts)',
     async () => {
       const decoders = new FakeDecoders((dec, i) => {
         if (i === 0) dec.push(3).end({ code: 1, stderr: '[in#0/mp3 @ 0x1] Error during demuxing: Input/output error' });
@@ -794,7 +794,7 @@ describe('Player: failures', OPTS, () => {
     assert.equal(player.current.title, 'Radio');
   });
 
-  it('a station that keeps ending on its own gives up after the retries; a link or a file simply ends', async () => {
+  it('a station that keeps ending on its own gives up after the retries; a link or file is not retried', async () => {
     const decoders = new FakeDecoders((dec) => dec.play(1));
     const { player, events, timers } = setup({ decoders, maxStreamRetries: 1 });
     player.play(makeStreamTrack('Radio'), { channelId: CH });
@@ -897,7 +897,7 @@ describe('Player: failures', OPTS, () => {
   });
 
   it('a join that takes over connectTimeoutMs is given up: connectError, and a late connection is left', async () => {
-    const voice = new FakeVoice({ manual: true }); // e.g. Yapin’'s SDK sleeping on 429s for minutes
+    const voice = new FakeVoice({ manual: true }); // e.g. yapper.js waiting out 429s for minutes
     const ctx = setup({ voice });
     ctx.player.play(makeFileTrack('A'), { channelId: CH });
     await until(() => voice.pending === 1);
@@ -913,7 +913,7 @@ describe('Player: failures', OPTS, () => {
     assert.equal(voice.signals[0].aborted, true, 'connect() hears that the join was given up');
     assert.equal(ctx.player.destroyed, true);
     assert.equal(ctx.player.isBusy, false, 'nothing is held up any more');
-    const late = voice.resolve(); // the join completes after all …
+    const late = voice.resolve(); // the join completes after all...
     await ctx.player.whenDestroyed;
     assert.equal(late.leaveCalls, 1, '… and is left right away');
     assert.deepEqual(ctx.events.of('destroy'), [[{ reason: 'error', error: err }]]);
@@ -1320,7 +1320,7 @@ describe('PlayerManager', OPTS, () => {
     assert.equal(players.obtain('s1'), p2);
   });
 
-  it('a player stopped while it waits for the previous one still holds the next one back until that one is out',
+  it('a waiting player that is stopped still holds its successor back until its predecessor has left',
     async () => {
       const { players, timers, voice, decoders } = manager();
       const p1 = players.obtain('s1');
