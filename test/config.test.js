@@ -293,7 +293,7 @@ describe('loadConfig: text settings', () => {
     assert.match(config.warnings[0], /^EMBED_COLOR is empty .*unquoted # .*; using #ff4fd8$/);
   });
 
-  it('BOT_STATUS → statusText: trimmed, inner whitespace collapsed', () => {
+  it('BOT_STATUS sets statusText: trimmed, inner whitespace collapsed', () => {
     assert.equal(loadConfig({}).statusText, 'Listening to /play');
     assert.equal(loadConfig({ BOT_STATUS: 'Vibing in voice' }).statusText, 'Vibing in voice');
     assert.equal(loadConfig({ BOT_STATUS: '  lots   of\tspace\n here ' }).statusText, 'lots of space here');
@@ -301,7 +301,7 @@ describe('loadConfig: text settings', () => {
     assert.deepEqual(loadConfig({ BOT_STATUS: 'x' }).warnings, []);
   });
 
-  it('LOG_LEVEL → logLevel: debug|info|warn|error in any case', () => checkVariable({
+  it('LOG_LEVEL sets logLevel: debug|info|warn|error in any case', () => checkVariable({
     name: 'LOG_LEVEL', field: 'logLevel', fallback: 'info', why: /debug, info, warn, error/,
     valid: [['debug', 'debug'], ['DEBUG', 'debug'], ['info', 'info'], [' Warn ', 'warn'], ['error', 'error']],
     invalid: ['verbose', 'trace', '5', 'warning'],
