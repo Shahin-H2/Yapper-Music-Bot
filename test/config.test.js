@@ -192,7 +192,7 @@ describe('loadConfig: whole numbers', () => {
     valid: [['0', 0], ['120', 120000], ['3600', 3600000]],
     invalid: ['-0.5', '3601', 'never'],
   }));
-  it('AUDIO_QUEUE_MS → audioQueueMs (50..1000, a multiple of 10: LiveKit aborts the process otherwise)', () => {
+  it('AUDIO_QUEUE_MS sets audioQueueMs (50..1000 in steps of 10; LiveKit aborts the process otherwise)', () => {
     checkVariable({
       name: 'AUDIO_QUEUE_MS', field: 'audioQueueMs', fallback: 200, why: /multiple of 10 from 50 to 1000/,
       valid: [['50', 50], ['120', 120], ['330', 330], ['1000', 1000]],
@@ -204,7 +204,7 @@ describe('loadConfig: whole numbers', () => {
       assert.ok(audioQueueMs % 10 === 0 && audioQueueMs >= 50 && audioQueueMs <= 1000, `${n} → ${audioQueueMs}`);
     }
   });
-  it('AUDIO_BITRATE → bitrate (32000..256000)', () => checkVariable({
+  it('AUDIO_BITRATE sets bitrate (32000..256000)', () => checkVariable({
     name: 'AUDIO_BITRATE', field: 'bitrate', fallback: 128000, why: range(32000, 256000),
     valid: [['32000', 32000], ['96000', 96000], ['256000', 256000]],
     invalid: ['31999', '256001', '128k', '128_000'],
@@ -215,10 +215,10 @@ describe('loadConfig: yes/no switches', () => {
   const words = [['true', true], ['TRUE', true], ['1', true], ['yes', true], ['Yes', true], ['on', true], ['ON', true],
     ['false', false], ['False', false], ['0', false], ['no', false], ['NO', false], ['off', false], [' Off ', false]];
   const invalid = ['maybe', '2', 'y', 'n', 'enabled', 'truee'];
-  it('ALLOW_URLS → allowUrls', () => checkVariable({
+  it('ALLOW_URLS sets allowUrls', () => checkVariable({
     name: 'ALLOW_URLS', field: 'allowUrls', fallback: true, valid: words, invalid, why: /true or false/,
   }));
-  it('REQUIRE_SAME_VOICE → requireSameVoice', () => checkVariable({
+  it('REQUIRE_SAME_VOICE sets requireSameVoice', () => checkVariable({
     name: 'REQUIRE_SAME_VOICE', field: 'requireSameVoice', fallback: true, valid: words, invalid, why: /true or false/,
   }));
 });
@@ -229,7 +229,7 @@ describe('loadConfig: paths', () => {
     ['MUSIC_DIR', 'musicDir', path.join(ROOT, 'music')],
     ['STATIONS_FILE', 'stationsFile', path.join(ROOT, 'config', 'stations.json')],
   ]) {
-    it(`${name} → ${field}: relative to the project root, absolute as given, ~ is home`, () => checkVariable({
+    it(`${name} sets ${field}: relative to the project root, absolute as given, ~ is home`, () => checkVariable({
       name, field, fallback, why: /NUL/,
       valid: [
         ['library', path.join(ROOT, 'library')],
@@ -264,7 +264,7 @@ describe('loadConfig: paths', () => {
 
   const programs = [['FFMPEG_PATH', 'ffmpegPath', 'ffmpeg'], ['FFPROBE_PATH', 'ffprobePath', 'ffprobe']];
   for (const [name, field, fallback] of programs) {
-    it(`${name} → ${field}: a bare name stays a PATH lookup, a path is resolved`, () => checkVariable({
+    it(`${name} sets ${field}: a bare name stays a PATH lookup, a path is resolved`, () => checkVariable({
       name, field, fallback, why: /NUL/,
       valid: [
         [`${fallback}-9`, `${fallback}-9`],
@@ -280,7 +280,7 @@ describe('loadConfig: paths', () => {
 });
 
 describe('loadConfig: text settings', () => {
-  it('EMBED_COLOR → embedColor: #rrggbb (any case, # optional), lower-cased', () => checkVariable({
+  it('EMBED_COLOR sets embedColor: #rrggbb (any case, # optional), lower-cased', () => checkVariable({
     name: 'EMBED_COLOR', field: 'embedColor', fallback: '#ff4fd8', why: /#rrggbb/,
     valid: [['#00FF7f', '#00ff7f'], ['#123abc', '#123abc'], ['00aaFF', '#00aaff'], ['  #ABCDEF ', '#abcdef']],
     invalid: ['red', '#fff', '#12345g', '#1234567', 'rgb(1, 2, 3)', '##123456'],
