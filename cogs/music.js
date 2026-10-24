@@ -41,7 +41,7 @@ const PROBE_MS = 2000;          // ffprobe for length and tags; a slower file pl
 const NAME_TTL_MS = 10 * 60_000; // voice channel names, for messages and the card footer
 const NO_NAME_TTL_MS = 30_000;
 const REFRESH_MS = 1500;        // Now Playing card edits are batched this long
-const JOIN_GRACE_MS = 5000;     // our own voice_leave this soon after joining is the previous session's (a /stop, then a /play)
+const JOIN_GRACE_MS = 5000;     // our own voice_leave this soon after joining is stale (a /stop, then a /play)
 const JOIN_NOTICE_MS = 2500;
 // Yapin’ allows a bot 10 voice joins and leaves a minute across all servers. Each server, and each person, may make
 // it join once per JOIN_GAP_MS (3 joins and their leaves a minute), so nobody can use up everyone's budget.
