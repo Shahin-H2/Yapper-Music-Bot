@@ -25,11 +25,7 @@ export function parseLogLevel(value) {
 
 let globalLevel = parseLogLevel(process.env.LOG_LEVEL) ?? 'info';
 
-/**
- * Sets the level of every logger created without its own.
- * @returns {LogLevel} the level as parsed (' WARN ' gives 'warn')
- * @throws {TypeError} on an unknown level
- */
+/** Sets the global level and returns it as parsed (' WARN ' gives 'warn'). Throws TypeError on an unknown level. */
 export function setLogLevel(level) {
   const parsed = parseLogLevel(level);
   if (!parsed) throw new TypeError(`Unknown log level ${inspect(level)}: use ${LOG_LEVELS.join(', ')}`);
