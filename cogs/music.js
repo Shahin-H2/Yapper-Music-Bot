@@ -75,7 +75,7 @@ const pageOf = (text) => (/^\d{1,6}$/.test(String(text ?? '')) ? Number(text) : 
 // Escaped for chat, minus the final period: callers put it inside their own sentence.
 const reasonOf = (err) => sanitize(err?.message || String(err || 'something went wrong'), 200).replace(/[.!]+$/, '');
 
-/** '30 s', '1 min 30 s' */
+/** Rounded to whole seconds: '30 s', '1 min 30 s'. */
 function inWords(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
   const min = Math.floor(total / 60);
@@ -111,14 +111,13 @@ export class Music extends Cog {
   #now;
   #random;
   #folder;
-  /** @type {{ ok: boolean, version?: string|null, error?: Error|null }|null} the last ffmpeg check */
+  /** @type {{ ok: boolean, version?: string|null, error?: Error|null }|null} result of the last ffmpeg check */
   #ffmpeg = null;
   #ffmpegAt = 0;
-  /** @type {Promise<void>|null} */
   #ffmpegCheck = null;
   /** @type {Map<Player, Session>} */
   #sessions = new Map();
-  /** @type {WeakMap<Track, { channelId: string, messageId: string }>} the /play a track's first card answers */
+  /** @type {WeakMap<Track, { channelId: string, messageId: string }>} the /play its first card or error replies to */
   #origins = new WeakMap();
   /** @type {Map<string, { name: string|null, at: number, pending: Promise<string|null>|null }>} */
   #names = new Map();
@@ -155,19 +154,19 @@ export class Music extends Cog {
   };
 
   /**
-   * @param {any} bot the yapper.js bot
-   * @param {object} [deps] stand-ins for tests; each one defaults to the real thing
-   * @param {object} [deps.config] settings; a partial object is filled up with the defaults (default: loadConfig())
+   * @param {any} bot
+   * @param {object} [deps] test stand-ins; each defaults to the real thing
+   * @param {object} [deps.config] partial settings over the defaults; the environment isn't read
    * @param {TrackLibrary} [deps.library]
    * @param {VoiceDirectory} [deps.voiceDirectory]
    * @param {(channelId: string, serverId: string, opts: { signal: AbortSignal }) => Promise<any>} [deps.connect]
-   *   joins voice (src/voice.js); `signal` aborts when the player gives up on the join
-   * @param {(track: Track) => any} [deps.spawnDecoder] starts ffmpeg for a track (src/ffmpeg.js)
+   *   `signal` aborts when the player gives up on the join
+   * @param {(track: Track) => any} [deps.spawnDecoder]
    * @param {(ffmpegPath: string) => Promise<{ ok: boolean, version?: string|null, error?: Error|null }>}
    *   [deps.checkFfmpeg]
-   * @param {{ setTimeout: Function, clearTimeout: Function }} [deps.timers] for the players and the cog's own waits
+   * @param {{ setTimeout: Function, clearTimeout: Function }} [deps.timers] shared with the players
    * @param {() => number} [deps.now] clock in ms
-   * @param {() => number} [deps.random] what /shuffle draws with
+   * @param {() => number} [deps.random] for /shuffle
    * @param {import('../src/log.js').Logger} [deps.logger]
    * @param {any} [deps.rtc] the @livekit/rtc-node module
    */
@@ -197,10 +196,10 @@ export class Music extends Cog {
     });
   }
 
-  /** The per-server players (a PlayerManager from src/player.js), e.g. for another cog that wants to look. */
+  /** For other cogs and tests. */
   get players() { return this.#players; }
 
-  /** Loads the stations and looks for ffmpeg (yapper.js awaits this before the bot starts). */
+  /** Awaited by yapper.js before the bot starts. Never throws: problems are logged as warnings. */
   async cogLoad() {
     const [warnings] = await Promise.all([
       Promise.resolve().then(() => this.#library.init())
