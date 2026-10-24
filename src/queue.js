@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * One server's play queue: the current track, the tracks up next and the loop mode. Pure state with no I/O, timers
  * or events; the player drives it.
