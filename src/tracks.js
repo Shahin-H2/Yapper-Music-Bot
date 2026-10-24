@@ -180,10 +180,7 @@ async function readMusicDir(musicDir) {
   return { tracks: picked.filter(Boolean).sort(byFileName), error: null };
 }
 
-/**
- * Audio files directly in `musicDir`, in natural order: the numbering /tracks shows. [] if it can't be read.
- * @returns {Promise<LocalTrack[]>}
- */
+/** Audio files directly in `musicDir`, in natural order (the numbering /tracks shows); [] if unreadable. */
 export async function listLocalTracks(musicDir) {
   try {
     return (await readMusicDir(musicDir)).tracks;
@@ -598,10 +595,7 @@ function withInfo(track, { duration, title, artist }) {
   return out;
 }
 
-/**
- * The library one bot uses. Stations load once, in init(); the music folder is listed on demand and cached for
- * `cacheMs`, so new files show up without a restart; ffprobe results are cached per file version.
- */
+/** Stations load in init(); the folder listing is cached for `cacheMs`, so new files show up without a restart. */
 export class TrackLibrary {
   #musicDir;
   #stationsFile;
@@ -617,14 +611,10 @@ export class TrackLibrary {
   #probes = new Map();
 
   /**
-   * @param {object} [opts]
-   * @param {string|null} [opts.musicDir] folder of audio files; null: no local tracks
-   * @param {string|null} [opts.stationsFile] JSON file of radio presets; null: no stations
-   * @param {boolean} [opts.allowUrls] whether /play takes http(s) stream links
-   * @param {string} [opts.ffprobePath] for the default probe
-   * @param {(file: string) => Promise<{ duration: number|null, title: string|null, artist: string|null }>} [opts.probe]
-   * @param {number} [opts.cacheMs] how long a folder listing is reused
-   * @param {() => number} [opts.now] clock in ms
+   * @param {{ musicDir?: string|null, stationsFile?: string|null, allowUrls?: boolean, ffprobePath?: string,
+   *   probe?: (file: string) => Promise<{ duration: number|null, title: string|null, artist: string|null }>,
+   *   cacheMs?: number, now?: () => number }} [opts]
+   *   musicDir, stationsFile: null for none; ffprobePath: for the default probe; cacheMs: how long a listing is reused
    */
   constructor({ musicDir = null, stationsFile = null, allowUrls = true, ffprobePath = 'ffprobe',
     probe = (file) => probeFile(file, { ffprobePath }), cacheMs = 3000, now = Date.now } = {}) {
@@ -692,11 +682,7 @@ export class TrackLibrary {
     return resolveQuery(query, { localTracks: tracks, stations: this.#stations, allowUrls: this.#allowUrls });
   }
 
-  /**
-   * A copy of a file track with ffprobe's duration and, if the file has a title tag, that title and its artist.
-   * Probes once per file version (path, mtime, size); a failed probe is retried next time. Streams and anything that
-   * can't be probed come back unchanged. Never throws.
-   */
+  /** A copy of a file track with ffprobe's duration and tags, probed once per file version. Never throws. */
   async enrich(track) {
     try {
       if (track === null || typeof track !== 'object' || track.kind !== 'file' || typeof track.input !== 'string') {
