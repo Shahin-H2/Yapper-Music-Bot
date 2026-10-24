@@ -1,7 +1,6 @@
 # Music Bot
 
-![Node.js >= 20.6](https://img.shields.io/badge/node-%3E%3D%2020.6-339933?logo=nodedotjs&logoColor=white)
-[![License: Proprietary / All Rights Reserved](https://img.shields.io/badge/license-Proprietary%20%2F%20All%20Rights%20Reserved-red)](LICENSE)
+![Node.js >= 20.6](https://img.shields.io/badge/node-%3E%3D%2020.6-339933?logo=nodedotjs&logoColor=white) [![License: Proprietary / All Rights Reserved](https://img.shields.io/badge/license-Proprietary%20%2F%20All%20Rights%20Reserved-red)](LICENSE)
 
 Music Bot plays your own audio files and live internet radio in [Yapin’](https://www.yapin.gg) voice channels. Every server gets its own queue, and an interactive Now Playing card lets people pause, skip, loop and change the volume with a click.
 
@@ -10,8 +9,6 @@ Music Bot plays your own audio files and live internet radio in [Yapin’](https
 Join a voice channel and type `/play` with a track number, a file name, a station or a stream link. Music Bot joins your channel and answers with a Now Playing card; if something is already playing, your pick goes into the queue instead. By default it leaves 30 seconds after the music runs out or after everyone else has left.
 
 ### Now Playing card
-
-This is what the bot posts while a local file plays, with a radio station up next:
 
 ```text
 🎶 Now Playing
@@ -27,7 +24,7 @@ SomaFM · Groove Salad · 🔴 LIVE
 [ 🔁 Loop: Off ]  [ 🔉 Vol - ]  [ 🔊 Vol + ]
 ```
 
-Radio shows 🔴 LIVE and the station's description instead of a progress bar. The card updates itself when someone pauses, changes the volume or loop mode, or edits the queue (the progress bar moves with those updates). When a new card is posted, the old one loses its buttons.
+That is the card for a local file with a radio station up next. Radio shows 🔴 LIVE and the station's description instead of a progress bar. The card updates itself when someone pauses, changes the volume or loop mode, or edits the queue (the progress bar moves with those updates). When a new card is posted, the old one loses its buttons.
 
 | Button | What it does |
 | --- | --- |
@@ -61,7 +58,7 @@ Playback controls and the card's buttons only work for people in the bot's voice
 
 ### Built-in radio stations
 
-Twelve stations come with the bot. Play one by its id (`/play groovesalad`) or by its name (`/play groove salad`).
+Twelve stations come with the bot. Play one by its id (`/play groovesalad`) or by its name (`/play groove salad`). To add your own, add an entry to `config/stations.json` and restart the bot; the fields are listed under Configuration below.
 
 | ID | Station | Network | Style |
 | --- | --- | --- | --- |
@@ -77,8 +74,6 @@ Twelve stations come with the bot. Play one by its id (`/play groovesalad`) or b
 | `fipjazz` | [FIP Jazz](https://www.radiofrance.fr/fip) | Radio France | Jazz around the clock from FIP |
 | `npo2` | [NPO Radio 2](https://www.nporadio2.nl/) | NPO | Dutch pop & rock classics |
 | `3fm` | [NPO 3FM](https://www.npo3fm.nl/) | NPO | New pop, rock & alternative from the Netherlands |
-
-To add your own, add an entry to `config/stations.json` and restart the bot. The fields are listed under Configuration below.
 
 ### Quick examples
 
@@ -150,8 +145,7 @@ Only `YAPPER_BOT_TOKEN` is required. Variables already set in your shell win ove
 | Symptom | Fix |
 | --- | --- |
 | `node: bad option: --env-file=.env` | Your Node.js is older than 20.6. Upgrade it. |
-| `node: .env: not found` | Run `cp .env.example .env` and put your bot token in it. |
-| The log says `YAPPER_BOT_TOKEN isn't set`, or `couldn't start` with a hint to check it | Put the bot token (it starts with `yb_`) in `.env`. If Yapin’ rejected it, make a new one in Settings > Developer. |
+| `node: .env: not found`, or the log says `YAPPER_BOT_TOKEN isn't set` or `couldn't start` with a hint to check it | Run `cp .env.example .env` and put your bot token (it starts with `yb_`) in it. If Yapin’ rejected the token, make a new one in Settings > Developer. |
 | A variable set in your shell is ignored | On Node 20.6.x the `.env` file wins over the shell. Upgrade to Node 20.7 or newer, or change the value in `.env`. |
 | `/play` says ffmpeg isn't installed, or the log says `ffmpeg not found` | Install ffmpeg, or set `FFMPEG_PATH` to its full path (`which ffmpeg`, or `where ffmpeg` on Windows). No restart needed: `/play` looks for it again, at most every 30 s. |
 | "Join a voice channel first" while you are in one, or "I don't have permission to join that voice channel" | The bot's role needs access to that voice channel, including permission to join it. |
@@ -170,16 +164,11 @@ Plain Node.js (ES modules with JSDoc types, no build step) on the single-file ya
 
 ```text
  ./music/song.flac  or  https://host/stream.mp3
-   ▼
- ffmpeg: decodes to s16le PCM, 48 kHz stereo                      src/ffmpeg.js
-   ▼
- PcmFramer: 10 ms frames of 1920 bytes, each in its own buffer    src/audio.js
-   ▼
- applyGain: volume ramped across the frame, clamped to 16 bits    src/audio.js
-   ▼
- LiveKit AudioSource with a 200 ms queue (AUDIO_QUEUE_MS)         src/voice.js
-   ▼
- end-to-end encrypted Yapin’ voice call                           yapper.js
+   ▼  ffmpeg        decodes to s16le PCM, 48 kHz stereo                 src/ffmpeg.js
+   ▼  PcmFramer     10 ms frames of 1920 bytes, each in its own buffer  src/audio.js
+   ▼  applyGain     volume ramped across the frame, clamped to 16 bits  src/audio.js
+   ▼  AudioSource   LiveKit, with a 200 ms queue (AUDIO_QUEUE_MS)       src/voice.js
+   ▼  end-to-end encrypted Yapin’ voice call                            yapper.js
 ```
 
 - **Frames that own their memory.** rtc-node hands native code a frame's whole underlying buffer from offset 0, so a view into Node's pooled `Buffer` memory would play whatever bytes sit next to it. `PcmFramer` therefore copies every 10 ms frame (480 samples × 2 channels × 2 bytes) into a fresh `ArrayBuffer`, and puts samples split across chunks back together.
@@ -240,6 +229,4 @@ Everything runs offline and deterministically: fake timers, voice connections an
 
 ## License
 
-Proprietary, All Rights Reserved. Copyright (c) 2026 Shahin Hassanyan.
-
-The source is published for portfolio viewing only. You may not copy, modify, run or redistribute it without written permission; see [LICENSE](LICENSE) for the full terms. To ask for permission, contact [Shahin-H2](https://github.com/Shahin-H2) on GitHub. Third-party parts keep their own terms: `yapper.js` (the Yapin’ bot SDK), the npm packages such as `@livekit/rtc-node` (Apache License 2.0), and the radio streams, which belong to their broadcasters.
+Proprietary, All Rights Reserved. Copyright (c) 2026 Shahin Hassanyan. The source is published for portfolio viewing only. You may not copy, modify, run or redistribute it without written permission; see [LICENSE](LICENSE) for the full terms. To ask for permission, contact [Shahin-H2](https://github.com/Shahin-H2) on GitHub. Third-party parts keep their own terms: `yapper.js` (the Yapin’ bot SDK), the npm packages such as `@livekit/rtc-node` (Apache License 2.0), and the radio streams, which belong to their broadcasters.
