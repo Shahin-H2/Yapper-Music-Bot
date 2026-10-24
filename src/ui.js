@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Shahin Hassanyan. All rights reserved.
+
 /**
  * What Music Bot shows in chat (Now Playing card and buttons, queue, library, help), built as yapper.js Embeds and
  * Rows. Pure: no I/O, no state. Text from users and files goes through sanitize() so it can't format a card or ping
