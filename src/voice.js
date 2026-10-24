@@ -1,5 +1,5 @@
 /**
- * Voice for DLS_bot: joining a channel through yapper.js + @livekit/rtc-node, and knowing who is in voice.
+ * Voice for Music Bot: joining a channel through yapper.js + @livekit/rtc-node, and knowing who is in voice.
  *
  *   import * as rtc from '@livekit/rtc-node';
  *   const conn = await connectVoice({ bot, rtc, serverId, channelId, queueMs: 200 });
